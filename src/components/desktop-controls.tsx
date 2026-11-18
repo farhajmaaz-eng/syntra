@@ -2,6 +2,7 @@
 import { useEffect, useRef } from "react";
 import { Keyboard, X, Palette, Monitor, Download } from "lucide-react";
 import { Button } from "./ui/button";
+import { CustomSelect } from "./ui/custom-select";
 import { downloadDiagnostics, type DesktopPreferences } from "@/lib/desktop";
 export function Appearance({
   preferences,
@@ -46,18 +47,18 @@ export function Appearance({
         </fieldset>
         <fieldset>
           <legend>Interface density</legend>
-          <select
+          <CustomSelect
             aria-label="Interface density"
             value={preferences.density}
-            onChange={(e) =>
+            onValueChange={(val) =>
               update({
-                density: e.target.value as DesktopPreferences["density"],
+                density: val as DesktopPreferences["density"],
               })
             }
           >
             <option value="compact">Compact</option>
             <option value="comfortable">Comfortable</option>
-          </select>
+          </CustomSelect>
           <label className="checkbox">
             <input
               type="checkbox"

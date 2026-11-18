@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "./ui/button";
+import { CustomSelect } from "./ui/custom-select";
 import { DetailDrawer } from "./ui/workspace-primitives";
 import { type Act } from "./feature-ui";
 export default function StudioConnection({
@@ -114,12 +115,12 @@ export default function StudioConnection({
       >
         <label>
           Previous run target
-          <select
+          <CustomSelect
             aria-label="Previous run target"
             value={oldId}
             disabled={busy}
-            onChange={(e) => {
-              setOldId(e.target.value);
+            onValueChange={(val) => {
+              setOldId(val);
               setPreview(null);
             }}
           >
@@ -128,7 +129,7 @@ export default function StudioConnection({
                 {id || "Unassigned after connection reset"}
               </option>
             ))}
-          </select>
+          </CustomSelect>
         </label>
         <label>
           New Roblox Studio instance ID

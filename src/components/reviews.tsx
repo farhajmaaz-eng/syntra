@@ -11,10 +11,11 @@ import {
   Images,
   ShieldCheck,
   TriangleAlert,
-  Sparkles,
+  Plus,
   X,
 } from "lucide-react";
 import { Button } from "./ui/button";
+import { CustomSelect } from "./ui/custom-select";
 import {
   ConfirmDialog,
   DetailDrawer,
@@ -376,7 +377,7 @@ export default function Reviews({
               </EmptyState>
               <Button asChild variant="outline">
                 <Link href="/chat">
-                  <Sparkles size={14} /> Start a request
+                  <Plus size={14} /> Start a request
                 </Link>
               </Button>
             </section>
@@ -414,14 +415,18 @@ export default function Reviews({
                     >
                       <label>
                         Outcome after inspecting Studio
-                        <select name="executed">
+                        <CustomSelect
+                          name="executed"
+                          aria-label="Outcome after inspecting Studio"
+                          defaultValue="yes"
+                        >
                           <option value="yes">
                             Change already applied — preserve it
                           </option>
                           <option value="no">
                             Change did not apply — allow retry
                           </option>
-                        </select>
+                        </CustomSelect>
                       </label>
                       <label>
                         Inspection evidence

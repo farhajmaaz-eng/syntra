@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import { safeResponseJson } from "./utils";
 export function useResource<T = any>(
   path: string | null,
   revision: unknown = 0,
@@ -23,7 +24,7 @@ export function useResource<T = any>(
     void (async () => {
       try {
         const r = await fetch(`/api/${path}`, { signal: controller.signal });
-        const value = await r.json();
+        const value = await safeResponseJson(r);
         if (!r.ok) throw new Error(value.error || "Request failed");
         if (!controller.signal.aborted) setData(value);
       } catch (error) {

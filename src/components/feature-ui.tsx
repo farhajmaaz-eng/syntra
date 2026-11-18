@@ -1,8 +1,12 @@
 "use client";
 import { useState, type ReactNode } from "react";
-import { Loader2, Upload } from "lucide-react";
+import { Upload } from "lucide-react";
 import { Button } from "./ui/button";
-import { DetailDrawer } from "./ui/workspace-primitives";
+import {
+  DetailDrawer,
+  ResourceSkeleton,
+  type ResourceSkeletonVariant,
+} from "./ui/workspace-primitives";
 export type Act = (path: string, body: any) => Promise<any>;
 export function StatusChip({ status }: { status: string }) {
   return (
@@ -14,10 +18,12 @@ export function StatusChip({ status }: { status: string }) {
 export function ResourceState({
   loading,
   error,
+  variant = "default",
   children,
 }: {
   loading: boolean;
   error: string;
+  variant?: ResourceSkeletonVariant;
   children?: ReactNode;
 }) {
   return error ? (
@@ -25,10 +31,7 @@ export function ResourceState({
       {error}
     </p>
   ) : loading ? (
-    <p className="v2-loading" role="status">
-      <Loader2 size={15} className="spin" />
-      Loading…
-    </p>
+    <ResourceSkeleton variant={variant} />
   ) : (
     children
   );

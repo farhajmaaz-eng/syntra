@@ -13,10 +13,12 @@ import {
 import {
   displayDate,
   pitchSections,
+  safeJsonValue,
   sectionTitles,
 } from "@/lib/feature-contracts";
 import { useResource } from "@/lib/use-resource";
 import { Button } from "./ui/button";
+import { CustomSelect } from "./ui/custom-select";
 import {
   ConfirmDialog,
   DetailDrawer,
@@ -85,18 +87,22 @@ export default function Pitches({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <select
+        <CustomSelect
+          variant="bar"
+          align="right"
           className="v2-sort"
           aria-label="Pitch status"
           value={filter}
-          onChange={(e) => setFilter(e.target.value)}
+          onValueChange={setFilter}
         >
           {["all", "draft", "accepted", "revision_requested", "archived"].map(
             (s) => (
-              <option key={s}>{s}</option>
+              <option key={s} value={s}>
+                {s.replaceAll("_", " ")}
+              </option>
             ),
           )}
-        </select>
+        </CustomSelect>
         <Button
           onClick={() =>
             setEditing({
@@ -114,7 +120,11 @@ export default function Pitches({
           New pitch
         </Button>
       </div>
-      <ResourceState loading={resource.loading} error={resource.error}>
+      <ResourceState
+        loading={resource.loading}
+        error={resource.error}
+        variant="cards"
+      >
         {filtered.length ? (
           <div className="v2-pitch-grid">
             {filtered.map((p) => (
@@ -277,7 +287,7 @@ export default function Pitches({
                 <summary>
                   Version {v.version} · {displayDate(v.created)}
                 </summary>
-                <pre>{JSON.stringify(JSON.parse(v.payload), null, 2)}</pre>
+                <pre>{JSON.stringify(safeJsonValue(v.payload, {}), null, 2)}</pre>
               </details>
             ))}
             {(data.reviewEvents || [])
@@ -359,11 +369,17 @@ export default function Pitches({
             </label>
             <label>
               Validation state (maintained by you)
-              <select name="confidence" defaultValue={editing.confidence}>
+              <CustomSelect
+                name="confidence"
+                aria-label="Validation state"
+                defaultValue={editing.confidence}
+              >
                 {["unvalidated", "researching", "validated"].map((s) => (
-                  <option key={s}>{s}</option>
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
                 ))}
-              </select>
+              </CustomSelect>
             </label>
             <label>
               Tags

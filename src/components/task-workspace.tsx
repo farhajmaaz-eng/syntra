@@ -14,10 +14,16 @@ import {
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { roles } from "@/lib/roles";
-import { displayDate, gameForTask, priorities } from "@/lib/feature-contracts";
+import {
+  displayDate,
+  gameForTask,
+  priorities,
+  safeJsonArray,
+} from "@/lib/feature-contracts";
 import { useResource } from "@/lib/use-resource";
 import { Avatar } from "./agent-avatar";
 import { Button } from "./ui/button";
+import { CustomMultiSelect, CustomSelect } from "./ui/custom-select";
 import {
   ConfirmDialog,
   DetailDrawer,
@@ -145,7 +151,7 @@ export function TaskInspector({
         <div>
           <dt>Dependencies</dt>
           <dd>
-            {JSON.parse(task.deps || "[]").map((id: string) => (
+            {safeJsonArray(task.deps).map((id: string) => (
               <Link
                 className="text-link"
                 key={id}
@@ -154,7 +160,7 @@ export function TaskInspector({
                 {data.tasks.find((t: any) => t.id === id)?.title || id}
               </Link>
             ))}
-            {!JSON.parse(task.deps || "[]").length && "No dependencies"}
+            {!safeJsonArray(task.deps).length && "No dependencies"}
           </dd>
         </div>
         <div>
@@ -176,14 +182,14 @@ export function TaskInspector({
         <div className="v2-inline-fields">
           <label>
             Priority
-            <select
+            <CustomSelect
               aria-label={`Priority for ${task.title}`}
-              value={task.priority ?? 1}
+              value={String(task.priority ?? 1)}
               disabled={busy}
-              onChange={(e) =>
+              onValueChange={(val) =>
                 void act("tasks/update", {
                   id: task.id,
-                  priority: Number(e.target.value),
+                  priority: Number(val),
                 })
               }
             >
@@ -192,7 +198,7 @@ export function TaskInspector({
                   {p}
                 </option>
               ))}
-            </select>
+            </CustomSelect>
           </label>
           {!task.steps &&
             !(
@@ -202,14 +208,14 @@ export function TaskInspector({
             ) && (
               <label>
                 Assignee
-                <select
+                <CustomSelect
                   aria-label={`Assignee for ${task.title}`}
                   value={task.agent}
                   disabled={busy}
-                  onChange={(e) =>
+                  onValueChange={(val) =>
                     void act("tasks/update", {
                       id: task.id,
-                      agent: e.target.value,
+                      agent: val,
                     })
                   }
                 >
@@ -218,12 +224,12 @@ export function TaskInspector({
                       {a.name}
                     </option>
                   ))}
-                </select>
+                </CustomSelect>
               </label>
             )}
         </div>
       )}
-      <ResourceState loading={info.loading} error={info.error}>
+      <ResourceState loading={info.loading} error={info.error} variant="detail">
         {info.data && (
           <>
             {!!info.data.messages.length && (
@@ -349,10 +355,12 @@ export function NewTaskDialog({
       >
         <label>
           Project
-          <select
+          <CustomSelect
+            aria-label="Project"
             required
             value={project}
-            onChange={(e) => setProject(e.target.value)}
+            onValueChange={setProject}
+            placeholder="Select a game"
           >
             <option value="">Select a game</option>
             {data.games
@@ -363,7 +371,7 @@ export function NewTaskDialog({
                   {!g.studio_id ? " · planning only" : ""}
                 </option>
               ))}
-          </select>
+          </CustomSelect>
         </label>
         {!data.games.length && (
           <Link href="/games" className="text-link">
@@ -385,7 +393,11 @@ export function NewTaskDialog({
         <div className="form-grid">
           <label>
             Assign to
-            <select value={agent} onChange={(e) => setAgent(e.target.value)}>
+            <CustomSelect
+              aria-label="Assign to"
+              value={agent}
+              onValueChange={setAgent}
+            >
               {data.agents.map((a: any) => (
                 <option disabled={!a.enabled} key={a.name} value={a.name}>
                   {a.name === "Lead"
@@ -393,17 +405,17 @@ export function NewTaskDialog({
                     : `${a.name} · ${roles[a.name as keyof typeof roles]?.title || "Agent"}`}
                 </option>
               ))}
-            </select>
+            </CustomSelect>
           </label>
           <label>
             Priority
-            <select name="priority" aria-label="Priority" defaultValue="1">
+            <CustomSelect name="priority" aria-label="Priority" defaultValue="1">
               {priorities.map((p, i) => (
                 <option key={p} value={i}>
                   {p}
                 </option>
               ))}
-            </select>
+            </CustomSelect>
           </label>
         </div>
         <label>
@@ -416,20 +428,23 @@ export function NewTaskDialog({
         </label>
         <label>
           Dependencies
-          <select key={project} multiple name="dependencies" size={3}>
-            {data.tasks
+          <CustomMultiSelect
+            key={project}
+            name="dependencies"
+            aria-label="Dependencies"
+            emptyText="No active tasks in this project yet."
+            options={data.tasks
               .filter(
                 (t: any) =>
                   gameForTask(data, t)?.id === project &&
                   !["cancelled", "failed"].includes(t.status),
               )
-              .map((t: any) => (
-                <option key={t.id} value={t.id}>
-                  {t.title} · {t.status}
-                </option>
-              ))}
-          </select>
-          <small>Optional. Use Ctrl/Cmd to select multiple tasks.</small>
+              .map((t: any) => ({
+                value: t.id,
+                label: `${t.title} · ${t.status}`,
+              }))}
+          />
+          <small>Optional. Click tasks to link dependencies.</small>
         </label>
         {agent === "Lead" && (
           <label className="checkbox">
@@ -580,16 +595,18 @@ export default function TaskWorkspace({
             setLimit(50);
           }}
         />
-        <select
+        <CustomSelect
+          variant="bar"
+          align="right"
           className="v2-sort"
           aria-label="Sort tasks"
           value={sort}
-          onChange={(e) => setSort(e.target.value)}
+          onValueChange={setSort}
         >
           <option value="priority">Priority</option>
           <option value="newest">Newest first</option>
           <option value="oldest">Oldest first</option>
-        </select>
+        </CustomSelect>
       </div>
       {!filtered.length && (
         <section className="panel">

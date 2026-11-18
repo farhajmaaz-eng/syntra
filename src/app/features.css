@@ -383,7 +383,8 @@
   margin-top: auto;
 }
 .v2-pitch-hero {
-  background: linear-gradient(110deg, var(--accent-wash), var(--surface) 80%);
+  background: var(--surface);
+  border-color: var(--border);
 }
 .v2-pitch-hero h2 {
   font-size: 22px;
@@ -571,7 +572,7 @@
   max-height: 65vh;
   overflow: auto;
   padding: 12px;
-  background: #07080c;
+  background: var(--app-bg);
 }
 .v2-media-stage img {
   display: block;

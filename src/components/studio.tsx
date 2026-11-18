@@ -28,7 +28,6 @@ import {
   Send,
   Settings,
   ShieldCheck,
-  Sparkles,
   X,
   Zap,
 } from "lucide-react";
@@ -44,11 +43,12 @@ import AgentWorkspace, { LeadWorkspace } from "./agent-workspace";
 import GameOps from "./game-ops";
 import Market from "./market";
 import Pitches from "./pitches";
-import { ConfirmDialog } from "./ui/workspace-primitives";
+import { ConfirmDialog, Skeleton } from "./ui/workspace-primitives";
+import { CustomSelect } from "./ui/custom-select";
+import { safeResponseJson } from "@/lib/utils";
 import CommandPalette from "./command-palette";
 import WorkspaceShell, { navigation as nav } from "./workspace-shell";
 import Reviews from "./reviews";
-import { Skeleton } from "./ui/workspace-primitives";
 const money = (n: number) => `$${(n || 0).toFixed(4)}`;
 const date = (s: string) =>
   new Date(s.replace(" ", "T") + "Z").toLocaleTimeString([], {
@@ -148,7 +148,7 @@ export default function Studio({
       const r = await fetch("/api/snapshot", {
         signal: AbortSignal.timeout(15000),
       });
-      const d = await r.json();
+      const d = await safeResponseJson(r);
       if (!r.ok) throw new Error(d.error);
       if (version !== loadVersion.current) return;
       setData(d);
@@ -164,19 +164,37 @@ export default function Studio({
     let ws: WebSocket | undefined;
     let retry: ReturnType<typeof setTimeout>;
     let disposed = false;
+    const canUseDirectWs =
+      typeof window !== "undefined" &&
+      location.protocol === "http:" &&
+      /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
     function connect() {
-      ws = new WebSocket(
-        `ws://${location.hostname}:${data?.settings.workerPort || 4318}`,
-      );
-      ws.onopen = () => setConnection("live");
-      ws.onmessage = () => void load();
-      ws.onerror = () => setConnection("polling");
-      ws.onclose = () => {
+      if (!canUseDirectWs || disposed) return;
+      try {
+        ws = new WebSocket(
+          `ws://${location.hostname}:${data?.settings.workerPort || 4318}`,
+        );
+        ws.onopen = () => setConnection("live");
+        ws.onmessage = () => void load();
+        ws.onerror = () => setConnection("polling");
+        ws.onclose = () => {
+          setConnection("polling");
+          if (!disposed) retry = setTimeout(connect, 4000);
+        };
+      } catch {
         setConnection("polling");
-        if (!disposed) retry = setTimeout(connect, 4000);
-      };
+      }
     }
-    connect();
+    if (canUseDirectWs) {
+      void fetch("/api/health", { cache: "no-store" })
+        .then((r) => (r.ok ? safeResponseJson(r) : null))
+        .then((health) => {
+          if (!disposed && health?.mode === "external") {
+            connect();
+          }
+        })
+        .catch(() => {});
+    }
     return () => {
       disposed = true;
       clearInterval(poll);
@@ -215,7 +233,7 @@ export default function Studio({
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(330000),
       });
-      const out = await r.json();
+      const out = await safeResponseJson(r);
       if (!r.ok) throw new Error(out.error);
       await load();
       setNotice(
@@ -268,10 +286,13 @@ export default function Studio({
       <div className="composer-top">
         <MessageSquare size={17} />
         <span>Request to Lead</span>
-        <select
+        <CustomSelect
+          variant="bar"
+          align="right"
           aria-label="Active game"
           value={selectedGame}
-          onChange={(e) => chooseGame(e.target.value)}
+          onValueChange={chooseGame}
+          placeholder="Select a game"
         >
           <option value="">Select a game</option>
           {data?.games.map((g: any) => (
@@ -279,7 +300,7 @@ export default function Studio({
               {g.name}
             </option>
           ))}
-        </select>
+        </CustomSelect>
       </div>
       <textarea
         name="content"
@@ -426,7 +447,7 @@ export default function Studio({
             </button>
           </div>
         )}
-        {!data && !error && <Skeleton />}
+        {!data && !error && <Skeleton page={page} />}
         {data && page === "home" && (
           <Overview
             data={data}

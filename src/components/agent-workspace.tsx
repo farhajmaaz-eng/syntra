@@ -13,10 +13,15 @@ import {
   X,
 } from "lucide-react";
 import { roles } from "@/lib/roles";
-import { displayDate, gameForTask } from "@/lib/feature-contracts";
+import {
+  displayDate,
+  gameForTask,
+  safeJsonArray,
+} from "@/lib/feature-contracts";
 import { useResource } from "@/lib/use-resource";
 import { Avatar } from "./agent-avatar";
 import { Button } from "./ui/button";
+import { CustomSelect } from "./ui/custom-select";
 import { ConfirmDialog, EmptyState } from "./ui/workspace-primitives";
 import AgentForm from "./agent-settings";
 import { PublicMessages, TaskControls, TaskInspector } from "./task-workspace";
@@ -76,7 +81,7 @@ export function PlanReview({
                     <strong>{t.title}</strong>
                   </Link>
                   <small>
-                    {t.agent} · {JSON.parse(t.deps || "[]").length} dependencies
+                    {t.agent} · {safeJsonArray(t.deps).length} dependencies
                   </small>
                   {t.acceptance && <p>{t.acceptance}</p>}
                 </div>
@@ -398,16 +403,17 @@ export default function AgentWorkspace({
                 <>
                   <label className="v2-task-select">
                     Assigned task
-                    <select
+                    <CustomSelect
+                      aria-label="Assigned task"
                       value={activeTask.id}
-                      onChange={(e) => setTaskId(e.target.value)}
+                      onValueChange={setTaskId}
                     >
                       {tasks.map((t: any) => (
                         <option key={t.id} value={t.id}>
                           {t.title} · {t.status}
                         </option>
                       ))}
-                    </select>
+                    </CustomSelect>
                   </label>
                   <p className="v2-assignment">
                     From {activeTask.requester || "Lead"} ·{" "}
@@ -422,7 +428,11 @@ export default function AgentWorkspace({
                       </Markdown>
                     </div>
                   </details>
-                  <ResourceState loading={info.loading} error={info.error}>
+                  <ResourceState
+                    loading={info.loading}
+                    error={info.error}
+                    variant="messages"
+                  >
                     <PublicMessages messages={[...messages.values()]} />
                   </ResourceState>
                   <details>

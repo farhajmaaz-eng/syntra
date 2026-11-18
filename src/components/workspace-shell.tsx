@@ -16,24 +16,25 @@ import {
   Images,
   Keyboard,
   ListTodo,
+  MessageSquare,
   PanelLeft,
   Plus,
   RefreshCw,
   Search,
   Settings,
-  Sparkles,
   Users,
   X,
 } from "lucide-react";
 import { Avatar } from "./agent-avatar";
 import { Button } from "./ui/button";
+import { CustomSelect } from "./ui/custom-select";
 import { roles, type Role } from "@/lib/roles";
 import { downloadDiagnostics, type DesktopPreferences } from "@/lib/desktop";
 
 // Keep the established Alt+1…9 workspace order.
 export const navigation = [
   ["home", "Home", Home],
-  ["chat", "Lead", Sparkles],
+  ["chat", "Lead", MessageSquare],
   ["team", "Team", Users],
   ["tasks", "Tasks", ListTodo],
   ["games", "Games", Gamepad2],
@@ -245,12 +246,11 @@ export default function WorkspaceShell(props: Props) {
     <>
       <Link href="/" className="brand" aria-label="Forge Studio home">
         <span className="brand-symbol">
-          <Flame size={21} />
+          <Flame size={18} />
         </span>
         <strong>
           forge<span>studio</span>
         </strong>
-        <span className="brand-tag">LOCAL</span>
       </Link>
       <button
         className="workspace-search"
@@ -395,10 +395,12 @@ export default function WorkspaceShell(props: Props) {
               <span className="project-avatar">
                 {game?.name?.[0]?.toUpperCase() || <Gamepad2 size={16} />}
               </span>
-              <select
+              <CustomSelect
+                variant="bar"
                 aria-label="Workspace game"
                 value={selectedGame}
-                onChange={(e) => chooseGame(e.target.value)}
+                onValueChange={chooseGame}
+                placeholder="Select a game"
               >
                 <option value="">Select a game</option>
                 {data?.games.map((g: any) => (
@@ -406,7 +408,7 @@ export default function WorkspaceShell(props: Props) {
                     {g.name}
                   </option>
                 ))}
-              </select>
+              </CustomSelect>
             </div>
             {attention > 0 && (
               <Link

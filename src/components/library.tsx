@@ -15,9 +15,10 @@ import {
   Trash2,
   Pencil,
   Image as ImageIcon,
-  Loader2,
 } from "lucide-react";
 import { Button } from "./ui/button";
+import { ResourceSkeleton } from "./ui/workspace-primitives";
+import { safeResponseJson } from "@/lib/utils";
 const categories = [
   "All references",
   "Security",
@@ -59,7 +60,7 @@ export default function Library() {
             }),
           { signal: c.signal },
         );
-        const data = await r.json();
+        const data = await safeResponseJson(r);
         if (!r.ok) throw new Error(data.error);
         setItems(
           category === "My references"
@@ -82,7 +83,7 @@ export default function Library() {
     setLoading(true);
     try {
       const r = await fetch("/api/library?id=" + encodeURIComponent(id));
-      const a = await r.json();
+      const a = await safeResponseJson(r);
       if (!r.ok || !a) throw new Error(a?.error || "Reference not found");
       setArticle(a);
       setEditing(null);
@@ -103,7 +104,7 @@ export default function Library() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const result = await r.json();
+      const result = await safeResponseJson(r);
       if (!r.ok) throw new Error(result.error);
       setRevision((v) => v + 1);
       setError("");
@@ -544,10 +545,10 @@ export default function Library() {
                 <span>{items.length} references</span>
               </div>
               {loading ? (
-                <div className="empty">
-                  <Loader2 className="spin" />
-                  Searching your library…
-                </div>
+                <ResourceSkeleton
+                  variant="cards"
+                  label="Searching your library"
+                />
               ) : items.length ? (
                 <div className="reference-grid">
                   {items.map((a) => (

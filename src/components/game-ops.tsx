@@ -10,6 +10,7 @@ import {
 } from "@/lib/feature-contracts";
 import { useResource } from "@/lib/use-resource";
 import { Button } from "./ui/button";
+import { CustomSelect } from "./ui/custom-select";
 import { DetailDrawer, EmptyState } from "./ui/workspace-primitives";
 import {
   ImportDialog,
@@ -321,32 +322,39 @@ export default function GameOps({
               <ResourceState
                 loading={telemetry.loading}
                 error={telemetry.error}
+                variant="charts"
               >
                 {snapshots.length ? (
                   <>
                     <div className="toolbar">
                       <label>
                         Source
-                        <select
+                        <CustomSelect
+                          variant="bar"
+                          aria-label="Source"
                           value={selectedSource || ""}
-                          onChange={(e) => setSource(e.target.value)}
+                          onValueChange={setSource}
                         >
                           {sources.map((s) => (
-                            <option key={s}>{s}</option>
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
                           ))}
-                        </select>
+                        </CustomSelect>
                       </label>
                       <label>
                         Observation window
-                        <select
+                        <CustomSelect
+                          variant="bar"
+                          aria-label="Observation window"
                           value={range}
-                          onChange={(e) => setRange(e.target.value)}
+                          onValueChange={setRange}
                         >
                           <option value="7">7 days</option>
                           <option value="30">30 days</option>
                           <option value="90">90 days</option>
                           <option value="all">All observations</option>
-                        </select>
+                        </CustomSelect>
                       </label>
                       <small>
                         Window ends at the latest imported observation. Gaps are
@@ -494,11 +502,17 @@ export default function GameOps({
               {edit && (
                 <label>
                   Lifecycle stage
-                  <select name="stage" defaultValue={game.stage}>
+                  <CustomSelect
+                    name="stage"
+                    aria-label="Lifecycle stage"
+                    defaultValue={game.stage}
+                  >
                     {gameStages.map((s) => (
-                      <option key={s}>{s}</option>
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
                     ))}
-                  </select>
+                  </CustomSelect>
                 </label>
               )}
               <label>
@@ -574,12 +588,12 @@ export function ChartPanel({
     );
   const series = [...new Set(points.map((p) => p.series))];
   const colors = [
-    "#a68aff",
-    "#31d6a0",
-    "#ffc65d",
-    "#7eacff",
-    "#f17c88",
-    "#77d6bb",
+    "#8ab4f8",
+    "#34d399",
+    "#fbbf24",
+    "#60a5fa",
+    "#f87171",
+    "#56d39c",
   ];
   const xMin = Math.min(...points.map((p) => Date.parse(p.at))),
     xMax = Math.max(...points.map((p) => Date.parse(p.at)));

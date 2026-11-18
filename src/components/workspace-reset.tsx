@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { Button } from "./ui/button";
+import { CustomSelect } from "./ui/custom-select";
 import { DetailDrawer } from "./ui/workspace-primitives";
 import { type Act } from "./feature-ui";
 export default function WorkspaceReset({
@@ -36,17 +37,17 @@ export default function WorkspaceReset({
       )}
       <label>
         Reset scope
-        <select
+        <CustomSelect
           aria-label="Reset scope"
           value={scope}
           disabled={busy}
-          onChange={(e) => setScope(e.target.value)}
+          onValueChange={setScope}
         >
           <option value="connection">
             Studio connection and instance pins
           </option>
           <option value="everything">Everything in Forge Studio</option>
-        </select>
+        </CustomSelect>
       </label>
       <small>
         {scope === "connection"

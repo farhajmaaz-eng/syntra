@@ -6,6 +6,7 @@ import { ArrowUpRight, BarChart3, Lightbulb, Upload } from "lucide-react";
 import { displayDate } from "@/lib/feature-contracts";
 import { useResource } from "@/lib/use-resource";
 import { Button } from "./ui/button";
+import { CustomSelect } from "./ui/custom-select";
 import { DetailDrawer, EmptyState } from "./ui/workspace-primitives";
 import { ImportDialog, ResourceState, type Act } from "./feature-ui";
 export default function Market({
@@ -132,7 +133,11 @@ export default function Market({
           Refresh stored data
         </Button>
       </section>
-      <ResourceState loading={resource.loading} error={resource.error}>
+      <ResourceState
+        loading={resource.loading}
+        error={resource.error}
+        variant="table"
+      >
         {current ? (
           <>
             <div className="toolbar">
@@ -142,12 +147,13 @@ export default function Market({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
-              <select
+              <CustomSelect
+                variant="bar"
                 className="v2-sort"
                 aria-label="Market snapshot"
                 value={current.id}
-                onChange={(e) => {
-                  setSnapshotId(e.target.value);
+                onValueChange={(val) => {
+                  setSnapshotId(val);
                   setComps([]);
                 }}
               >
@@ -156,12 +162,14 @@ export default function Market({
                     {s.category} · {displayDate(s.fetched_at)}
                   </option>
                 ))}
-              </select>
-              <select
+              </CustomSelect>
+              <CustomSelect
+                variant="bar"
+                align="right"
                 className="v2-sort"
                 aria-label="Market genre"
                 value={genre}
-                onChange={(e) => setGenre(e.target.value)}
+                onValueChange={setGenre}
               >
                 <option value="all">All genres</option>
                 {[
@@ -169,9 +177,11 @@ export default function Market({
                     current.games.map((g: any) => g.genre).filter(Boolean),
                   ),
                 ].map((g) => (
-                  <option key={g}>{g}</option>
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
                 ))}
-              </select>
+              </CustomSelect>
             </div>
             <div className="tabs" role="group" aria-label="Market sort">
               {[

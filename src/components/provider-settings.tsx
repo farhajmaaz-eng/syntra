@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Eye, EyeOff, KeyRound, RefreshCw, Trash2 } from "lucide-react";
 import { nvidiaAgentModels, openRouterAgentModels } from "@/lib/model-presets";
 import { Button } from "./ui/button";
+import { CustomSelect } from "./ui/custom-select";
 import { ConfirmDialog } from "./ui/workspace-primitives";
 import { StatusChip, type Act } from "./feature-ui";
 export default function ProviderSettings({
@@ -66,11 +67,12 @@ export default function ProviderSettings({
       >
         <label>
           Provider
-          <select
+          <CustomSelect
+            aria-label="Provider"
             value={provider}
             disabled={disabled}
-            onChange={(e) => {
-              setProvider(e.target.value as "openrouter" | "nvidia");
+            onValueChange={(val) => {
+              setProvider(val as "openrouter" | "nvidia");
               setApiKey("");
               setShowKey(false);
               setResult("");
@@ -78,7 +80,7 @@ export default function ProviderSettings({
           >
             <option value="openrouter">OpenRouter (primary)</option>
             <option value="nvidia">NVIDIA NIM (optional)</option>
-          </select>
+          </CustomSelect>
         </label>
         <p>
           {provider === "openrouter"

@@ -210,6 +210,24 @@ export function displayDate(value?: string) {
   );
   return Number.isNaN(date.getTime()) ? "Not recorded" : date.toLocaleString();
 }
+export function safeJsonArray<T = string>(value: unknown): T[] {
+  if (Array.isArray(value)) return value as T[];
+  if (typeof value !== "string" || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+export function safeJsonValue(value: unknown, fallback: unknown = {}): unknown {
+  if (typeof value !== "string") return value ?? fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
 export type MarketSnapshot = z.infer<typeof marketSchema> & { id: string };
 export type Pitch = z.infer<typeof pitchSchema> & {
   id: string;

@@ -10,7 +10,7 @@ import {
   Link2,
   ListTodo,
   ShieldCheck,
-  Sparkles,
+  Terminal,
   Activity,
   Plus,
   Gamepad2,
@@ -129,7 +129,7 @@ export default function Overview({
           <section className="panel request-pane">
             <div className="window-heading">
               <span>
-                <Sparkles size={15} /> Ask your Lead
+                <Terminal size={15} /> Ask your Lead
               </span>
               <span className="pane-meta">
                 {data.settings.paused

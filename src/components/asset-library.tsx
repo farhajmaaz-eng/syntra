@@ -18,6 +18,7 @@ import {
 import { assetKinds, displayDate } from "@/lib/feature-contracts";
 import { useResource } from "@/lib/use-resource";
 import { Button } from "./ui/button";
+import { CustomMultiSelect, CustomSelect } from "./ui/custom-select";
 import {
   ConfirmDialog,
   DetailDrawer,
@@ -86,22 +87,24 @@ export default function AssetLibrary({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <select
+        <CustomSelect
+          variant="bar"
           className="v2-sort"
           aria-label="Asset project scope"
           value={scope}
-          onChange={(e) => setScope(e.target.value)}
+          onValueChange={setScope}
         >
           <option value="all">All projects</option>
           <option disabled={!selectedGame} value="selected">
             Selected project
           </option>
-        </select>
-        <select
+        </CustomSelect>
+        <CustomSelect
+          variant="bar"
           className="v2-sort"
           aria-label="Asset status"
           value={status}
-          onChange={(e) => setStatus(e.target.value)}
+          onValueChange={setStatus}
         >
           {[
             "all",
@@ -112,19 +115,23 @@ export default function AssetLibrary({
             "catalogued",
             "archived",
           ].map((s) => (
-            <option key={s}>{s}</option>
+            <option key={s} value={s}>
+              {s.replaceAll("_", " ")}
+            </option>
           ))}
-        </select>
-        <select
+        </CustomSelect>
+        <CustomSelect
+          variant="bar"
+          align="right"
           className="v2-sort"
           aria-label="Sort assets"
           value={sort}
-          onChange={(e) => setSort(e.target.value)}
+          onValueChange={setSort}
         >
           <option value="newest">Newest first</option>
           <option value="oldest">Oldest first</option>
           <option value="name">Name</option>
-        </select>
+        </CustomSelect>
         <Button
           variant="outline"
           size="icon"
@@ -157,7 +164,7 @@ export default function AssetLibrary({
           ))}
         </div>
       )}
-      <ResourceState loading={assets.loading} error={assets.error}>
+      <ResourceState loading={assets.loading} error={assets.error} variant="cards">
         {!items.length ? (
           <section className="panel">
             <EmptyState
@@ -309,22 +316,32 @@ function AssetImport({
         <div className="form-grid">
           <label>
             Type
-            <select value={kind} onChange={(e) => setKind(e.target.value)}>
+            <CustomSelect
+              aria-label="Asset type"
+              value={kind}
+              onValueChange={setKind}
+            >
               {assetKinds.map((k) => (
-                <option key={k}>{k}</option>
+                <option key={k} value={k}>
+                  {k}
+                </option>
               ))}
-            </select>
+            </CustomSelect>
           </label>
           <label>
             Project
-            <select name="gameId" defaultValue={selectedGame}>
+            <CustomSelect
+              name="gameId"
+              aria-label="Asset project"
+              defaultValue={selectedGame}
+            >
               <option value="">Workspace-wide</option>
               {data.games.map((g: any) => (
                 <option value={g.id} key={g.id}>
                   {g.name}
                 </option>
               ))}
-            </select>
+            </CustomSelect>
           </label>
         </div>
         <label>
@@ -406,15 +423,17 @@ function AssetImport({
         </label>
         <label>
           Dependency assets
-          <select name="dependencies" multiple size={3}>
-            {(catalog.data || [])
+          <CustomMultiSelect
+            name="dependencies"
+            aria-label="Dependency assets"
+            emptyText="No dependency assets available."
+            options={(catalog.data || [])
               .filter((a) => a.status !== "archived")
-              .map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name} · {a.kind}
-                </option>
-              ))}
-          </select>
+              .map((a) => ({
+                value: a.id,
+                label: `${a.name} · ${a.kind}`,
+              }))}
+          />
           <small>
             Record references only. Dependencies are not installed
             automatically.
@@ -498,7 +517,11 @@ export function AssetDetail({
       close={close}
       wide
     >
-      <ResourceState loading={resource.loading} error={resource.error}>
+      <ResourceState
+        loading={resource.loading}
+        error={resource.error}
+        variant="detail"
+      >
         {asset && (
           <div className="v2-review-detail">
             <section className="v2-stack">
