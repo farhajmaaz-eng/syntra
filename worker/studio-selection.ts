@@ -27,7 +27,7 @@ export function requireIdle(active: Set<string>) {
     db.prepare("SELECT id FROM tasks WHERE status='running' LIMIT 1").get()
   )
     throw new Error(
-      "Pause the team and wait for active operations to finish before changing Studio connections or resetting Forge.",
+      "Pause the team and wait for active operations to finish before changing Studio connections or resetting Syntra.",
     );
 }
 function state(input: Selection) {

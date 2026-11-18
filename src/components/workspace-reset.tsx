@@ -23,8 +23,8 @@ export default function WorkspaceReset({
       <h3>Reset & manual setup</h3>
       <p>
         Reset the Studio connection to enter the MCP command and instance ID
-        again, or reset all Forge workspace data. Resetting Forge never changes
-        your Roblox place.
+        again, or reset all Syntra workspace data. Resetting Syntra never
+        changes your Roblox place.
       </p>
       {!data.settings.paused && (
         <Button
@@ -46,7 +46,7 @@ export default function WorkspaceReset({
           <option value="connection">
             Studio connection and instance pins
           </option>
-          <option value="everything">Everything in Forge Studio</option>
+          <option value="everything">Everything in Syntra Studio</option>
         </CustomSelect>
       </label>
       <small>
@@ -56,8 +56,12 @@ export default function WorkspaceReset({
       </small>
       <Button
         variant="destructive"
-        disabled={busy || running || !data.settings.paused}
+        disabled={busy || running}
         onClick={async () => {
+          if (!data.settings.paused) {
+            const paused = await act("pause", { paused: true });
+            if (!paused) return;
+          }
           const out = await act("workspace/reset/preview", { scope });
           if (out) {
             setPhrase("");
@@ -77,7 +81,7 @@ export default function WorkspaceReset({
         <DetailDrawer
           title={
             preview.scope === "everything"
-              ? "Reset everything in Forge?"
+              ? "Reset everything in Syntra Studio?"
               : "Reset Studio connection?"
           }
           close={() => setPreview(null)}
@@ -97,7 +101,8 @@ export default function WorkspaceReset({
                 );
                 if (out.scope === "everything") {
                   for (const key of Object.keys(localStorage))
-                    if (key.startsWith("forge-")) localStorage.removeItem(key);
+                    if (key.startsWith("forge-") || key.startsWith("syntra-"))
+                      localStorage.removeItem(key);
                   location.assign("/");
                 }
               }
@@ -109,7 +114,7 @@ export default function WorkspaceReset({
             </p>
             <p>
               {preview.scope === "everything"
-                ? "All local Forge work, user references, settings and saved keys will be reset."
+                ? "All local Syntra work, user references, settings and saved keys will be reset."
                 : "MCP settings and instance pins will be cleared; pending Studio calls and approvals will be cancelled. Work history and API keys are retained."}{" "}
               A private backup is created before changing data. It can contain
               API keys; do not commit or share it.

@@ -92,7 +92,7 @@ server.listen(port, "127.0.0.1", () => {
   console.log(
     JSON.stringify({
       level: "info",
-      message: "Forge worker listening",
+      message: "Syntra worker listening",
       host: "127.0.0.1",
       port,
     }),

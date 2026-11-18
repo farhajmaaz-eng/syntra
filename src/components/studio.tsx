@@ -46,6 +46,10 @@ import Pitches from "./pitches";
 import { ConfirmDialog, Skeleton } from "./ui/workspace-primitives";
 import { CustomSelect } from "./ui/custom-select";
 import { safeResponseJson } from "@/lib/utils";
+import {
+  loadStandaloneSnapshot,
+  runStandaloneAction,
+} from "@/lib/offline-workspace";
 import CommandPalette from "./command-palette";
 import WorkspaceShell, { navigation as nav } from "./workspace-shell";
 import Reviews from "./reviews";
@@ -141,6 +145,7 @@ export default function Studio({
     setSelectedGame(id);
     localStorage.setItem("forge-game", id);
   }
+  const [workerOffline, setWorkerOffline] = useState(false);
   const loadVersion = useRef(0);
   const load = useCallback(async () => {
     const version = ++loadVersion.current;
@@ -149,13 +154,22 @@ export default function Studio({
         signal: AbortSignal.timeout(15000),
       });
       const d = await safeResponseJson(r);
-      if (!r.ok) throw new Error(d.error);
+      if (!r.ok) throw new Error(d.error || `Worker unavailable (${r.status})`);
       if (version !== loadVersion.current) return;
+      setWorkerOffline(false);
       setData(d);
+      setConnection((prev) => (prev === "live" ? "live" : "polling"));
       setUpdatedAt(Date.now());
       setError("");
-    } catch (e) {
-      if (version === loadVersion.current) setError(String(e));
+    } catch {
+      if (version !== loadVersion.current) return;
+      setWorkerOffline(true);
+      setConnection("standalone");
+      setData((prev: any) =>
+        prev?.standaloneMode ? prev : loadStandaloneSnapshot(),
+      );
+      setUpdatedAt(Date.now());
+      setError("");
     }
   }, []);
   useEffect(() => {
@@ -226,37 +240,99 @@ export default function Studio({
     setBusy(true);
     setNotice("");
     setNoticeError(false);
+    const notices: Record<string, string> = {
+      chat: "Request queued",
+      settings: "Settings saved",
+      "provider/save": "Provider settings saved",
+      "provider/test": "Provider connection check finished",
+      models: "Model catalog refreshed",
+      games: "Project added",
+      "games/update": "Project updated",
+      "tasks/create": "Task created",
+      "tasks/update": "Task updated",
+      "tasks/control": "Task updated",
+      "runs/control": "Run updated",
+      "plans/approve": "Execution plan approved",
+      "agents/message": "Follow-up queued",
+      "attention/reply": "Answer recorded",
+      "pitches/save": "Pitch saved",
+      "pitches/decision": "Pitch updated",
+      "pitches/convert": "Pitch converted to project",
+      "market/import": "Market snapshot imported",
+      "telemetry/import": "Telemetry imported",
+      "assets/save": "Asset saved",
+      "assets/verdict": "Asset verdict recorded",
+      "assets/archive": "Asset archived",
+      "studio/switch/confirm":
+        "Studio target updated; the team remains paused",
+      "workspace/reset/confirm":
+        "Reset complete. Configure Studio in Settings and Games",
+      agents: "Agent settings saved",
+      approve: "Approval recorded",
+      review: "Review recorded",
+      resolve: "Operation reconciled",
+      retry: "Task queued",
+    };
+
+    const runLocal = () => {
+      const { snapshot: next, result } = runStandaloneAction(data, path, body);
+      setWorkerOffline(true);
+      setConnection("standalone");
+      setData(next);
+      setUpdatedAt(Date.now());
+      setNotice(
+        result?.message ||
+          notices[path] ||
+          "Saved locally (standalone mode)",
+      );
+      return result;
+    };
+
     try {
+      if (workerOffline) {
+        return runLocal();
+      }
       const r = await fetch("/api/" + path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(330000),
       });
+      if (r.status === 503) {
+        return runLocal();
+      }
       const out = await safeResponseJson(r);
       if (!r.ok) throw new Error(out.error);
       await load();
-      setNotice(
-        (
-          {
-            chat: "Request queued",
-            settings: "Settings saved",
-            "provider/save": "Provider settings saved",
-            "studio/switch/confirm":
-              "Studio target updated; the team remains paused",
-            "workspace/reset/confirm":
-              "Reset complete. Configure Studio in Settings and Games",
-            agents: "Agent settings saved",
-            approve: "Approval recorded",
-            review: "Review recorded",
-            retry: "Task queued",
-          } as Record<string, string>
-        )[path] || "",
-      );
+      if (path === "connect") {
+        setNotice(
+          out?.status === "connected"
+            ? "Connected to Roblox Studio bridge"
+            : "Studio bridge is optional — no MCP executable configured or Studio isn't open",
+        );
+      } else {
+        setNotice(out?.message || notices[path] || "");
+      }
       return out;
     } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (
+        message.includes("Worker unavailable") ||
+        message.includes("Failed to fetch") ||
+        message.includes("HTML error")
+      ) {
+        try {
+          return runLocal();
+        } catch (localErr) {
+          setNoticeError(true);
+          setNotice(
+            localErr instanceof Error ? localErr.message : String(localErr),
+          );
+          return null;
+        }
+      }
       setNoticeError(true);
-      setNotice(e instanceof Error ? e.message : String(e));
+      setNotice(message);
       return null;
     } finally {
       setBusy(false);
@@ -275,7 +351,7 @@ export default function Studio({
     const content = String(new FormData(form).get("content") || "");
     const result = await act("chat", {
       content,
-      gameId: selectedGame,
+      gameId: selectedGame || data?.games?.[0]?.id || "",
       reviewPlan: new FormData(form).get("reviewPlan") === "on",
     });
     if (result) form.reset();
@@ -318,7 +394,7 @@ export default function Studio({
           <span className="dot purple" /> Lead will plan and delegate to your
           team
         </span>
-        <Button disabled={busy || !selectedGame} type="submit">
+        <Button disabled={busy} type="submit">
           Send to Lead <ArrowRight size={15} />
         </Button>
       </div>
@@ -795,17 +871,16 @@ function SettingsForm({
         <ProviderSettings data={data} act={act} busy={busy} />
         <section className="panel form spaced">
           <h3>
-            <Radio size={18} /> Studio bridge
+            <Radio size={18} /> Studio bridge <small>(optional)</small>
           </h3>
           <Badge value={s.studioStatus} />
           {s.studioError && (
-            <p role="alert" className="warning-text">
-              {s.studioError}
-            </p>
+            <small className="muted-text">{s.studioError}</small>
           )}
           <p>
-            {s.studioTools.length} official tools discovered. Permissions are
-            restricted by agent role.
+            {s.studioTools.length} official tools discovered. Connect Roblox
+            Studio when executing live place edits; planning, API keys, and
+            specifications work without Studio.
           </p>
           <Button disabled={busy} onClick={() => act("connect", {})}>
             Connect / reconnect
@@ -815,8 +890,8 @@ function SettingsForm({
         <section className="panel form spaced">
           <h3>Recovery & rollback</h3>
           <p>
-            Forge records every call and preserves uncertain outcomes for
-            inspection. The current official MCP API has no general rollback
+            Syntra Studio records every call and preserves uncertain outcomes
+            for inspection. The current official MCP API has no general rollback
             tool. Use Studio’s saved place versions or Undo when applicable;
             verify the restored game before retrying.
           </p>

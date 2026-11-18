@@ -6,8 +6,8 @@ import {
   Activity,
   BookOpen,
   ChevronDown,
+  Cpu,
   Download,
-  Flame,
   Gamepad2,
   Gauge,
   Lightbulb,
@@ -244,12 +244,12 @@ export default function WorkspaceShell(props: Props) {
 
   const sidebarContent = (
     <>
-      <Link href="/" className="brand" aria-label="Forge Studio home">
+      <Link href="/" className="brand" aria-label="Syntra Studio home">
         <span className="brand-symbol">
-          <Flame size={18} />
+          <Cpu size={18} />
         </span>
         <strong>
-          forge<span>studio</span>
+          syntra<span>studio</span>
         </strong>
       </Link>
       <button
@@ -433,20 +433,30 @@ export default function WorkspaceShell(props: Props) {
             <span
               className={`connection ${connection === "live" && data && !syncError ? "is-live" : ""}`}
               title={
-                updatedAt
-                  ? `Last synced ${new Date(updatedAt).toLocaleTimeString()}`
-                  : "Waiting for worker"
+                connection === "standalone"
+                  ? "Standalone browser mode — worker and Studio optional"
+                  : updatedAt
+                    ? `Last synced ${new Date(updatedAt).toLocaleTimeString()}`
+                    : "Waiting for worker"
               }
             >
               <span
-                className={`dot ${data && !syncError ? "green" : "amber"}`}
+                className={`dot ${
+                  data && !syncError
+                    ? connection === "standalone"
+                      ? "amber"
+                      : "green"
+                    : "amber"
+                }`}
               />
               {syncError
                 ? "Connection interrupted"
                 : data
                   ? connection === "live"
-                    ? "Live · updated just now"
-                    : "Synced · polling"
+                    ? "Live · synced"
+                    : connection === "standalone"
+                      ? "Standalone · local"
+                      : "Synced · polling"
                   : "Connecting"}
             </span>
             <button

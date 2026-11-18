@@ -461,7 +461,7 @@ export default function AgentWorkspace({
                   if (
                     await act("agents/message", {
                       agent: agent.name,
-                      gameId: selectedGame,
+                      gameId: selectedGame || data.games[0]?.id || "",
                       content: f.get("content"),
                       taskId: activeTask?.id,
                       requestKey: messageKey,
@@ -495,7 +495,7 @@ export default function AgentWorkspace({
                     {messageError}
                   </p>
                 )}
-                <Button disabled={busy || !selectedGame || !agent.enabled}>
+                <Button disabled={busy || !agent.enabled}>
                   <Send size={14} />
                   Queue follow-up
                 </Button>

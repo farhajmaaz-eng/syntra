@@ -145,7 +145,7 @@ export async function completion(
   } else {
     if (!nvidiaFreeModelIds.includes(agent.model))
       throw new OperationError(
-        "This model is not in Forge’s NVIDIA free-endpoint allowlist. Apply the recommended free models in Settings.",
+        "This model is not in Syntra’s NVIDIA free-endpoint allowlist. Apply the recommended free models in Settings.",
       );
     if (!provider.allowUnpricedNim)
       throw new OperationError(

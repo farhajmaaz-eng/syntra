@@ -51,24 +51,24 @@ export default function Overview({
     {
       ok: data.keyConfigured,
       title: `${data.provider?.label || "Model provider"} API key`,
-      description: "Enter your API key in Settings → Model provider.",
-      href: "/settings",
-    },
-    {
-      ok: data.settings.studioStatus === "connected",
-      title: "Roblox Studio bridge",
-      description:
-        "Enable the official MCP server in Studio, then connect it in Settings.",
+      description: "Add or remove your API key in Settings → Model provider.",
       href: "/settings",
     },
     {
       ok: data.games.length > 0,
-      title: "Target game",
-      description: "Discover your Studio instance and register its ID.",
+      title: "Target project",
+      description: "Create or select a game project for planning and tasks.",
       href: "/games",
     },
+    {
+      ok: data.settings.studioStatus === "connected",
+      title: "Roblox Studio bridge (optional)",
+      description:
+        "Optional for planning & specs. Enable Studio MCP in Settings for live place edits.",
+      href: "/settings",
+    },
   ];
-  const ready = setup.every((x) => x.ok);
+  const ready = setup[0].ok && setup[1].ok;
   const notices = pending.length + reviews.length + failed.length;
   return (
     <div className="workspace-tiles">
@@ -161,12 +161,11 @@ export default function Overview({
                 <span>
                   {selectedGame
                     ? data.games.find((g: any) => g.id === selectedGame)?.name
-                    : "No target game selected"}
+                    : data.games.length
+                      ? data.games[0].name
+                      : "Syntra Sandbox (auto-created on send)"}
                 </span>
-                <Button
-                  type="submit"
-                  disabled={busy || !selectedGame || !prompt.trim()}
-                >
+                <Button type="submit" disabled={busy || !prompt.trim()}>
                   Queue request <ArrowRight size={14} />
                 </Button>
               </div>
@@ -467,9 +466,11 @@ export default function Overview({
               <div>
                 <dt>Worker</dt>
                 <dd>
-                  {Date.now() - data.settings.workerHeartbeat < 10000
-                    ? "online"
-                    : "offline"}
+                  {data.standaloneMode
+                    ? "standalone (no worker)"
+                    : Date.now() - data.settings.workerHeartbeat < 10000
+                      ? "online"
+                      : "embedded / idle"}
                 </dd>
               </div>
               <div>
@@ -478,7 +479,11 @@ export default function Overview({
               </div>
               <div>
                 <dt>Studio</dt>
-                <dd>{data.settings.studioStatus}</dd>
+                <dd>
+                  {data.settings.studioStatus === "connected"
+                    ? "connected"
+                    : "optional · disconnected"}
+                </dd>
               </div>
               <div>
                 <dt>Write approval</dt>

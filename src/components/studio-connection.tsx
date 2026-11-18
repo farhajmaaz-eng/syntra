@@ -101,6 +101,10 @@ export default function StudioConnection({
         onSubmit={async (e) => {
           e.preventDefault();
           setResult("");
+          if (!data.settings.paused) {
+            const paused = await act("pause", { paused: true });
+            if (!paused) return;
+          }
           const out = await act("studio/switch/preview", {
             gameId: game.id,
             oldStudioId: oldId,
@@ -159,9 +163,7 @@ export default function StudioConnection({
           confirmation. Pending Studio calls/approvals are withdrawn; completed
           evidence is retained. The team stays paused.
         </small>
-        <Button disabled={busy || running || !data.settings.paused}>
-          Review Studio switch
-        </Button>
+        <Button disabled={busy || running}>Review Studio switch</Button>
       </form>
       {result && <p role="status">{result}</p>}
       {preview && (

@@ -17,7 +17,7 @@ import {
   Image as ImageIcon,
 } from "lucide-react";
 import { Button } from "./ui/button";
-import { ResourceSkeleton } from "./ui/workspace-primitives";
+import { ConfirmDialog, ResourceSkeleton } from "./ui/workspace-primitives";
 import { safeResponseJson } from "@/lib/utils";
 const categories = [
   "All references",
@@ -42,7 +42,8 @@ export default function Library() {
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true),
     [revision, setRevision] = useState(0),
-    [saving, setSaving] = useState(false);
+    [saving, setSaving] = useState(false),
+    [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   useEffect(() => {
     const c = new AbortController();
     setLoading(true);
@@ -398,12 +399,7 @@ export default function Library() {
                         variant="ghost"
                         size="icon"
                         aria-label="Delete reference"
-                        onClick={async () => {
-                          if (confirm("Delete this personal reference?")) {
-                            if (await action("delete", { id: article.id }))
-                              setArticle(null);
-                          }
-                        }}
+                        onClick={() => setConfirmDeleteId(article.id)}
                       >
                         <Trash2 size={16} />
                       </Button>
@@ -463,7 +459,7 @@ export default function Library() {
                     Source revision {article.revision.slice(0, 8)}
                   </a>
                   . Official documentation can change; check the live source for
-                  current policies and limits. Practical notes below are Forge’s
+                  current policies and limits. Practical notes below are Syntra’s
                   editorial guidance.
                 </p>
               )}
@@ -473,7 +469,7 @@ export default function Library() {
                   src={article.image}
                   alt={
                     article.kind === "official"
-                      ? "Forge diagram illustrating " + article.title
+                      ? "Syntra diagram illustrating " + article.title
                       : article.title + " reference image"
                   }
                   referrerPolicy="no-referrer"
@@ -602,6 +598,24 @@ export default function Library() {
           )}
         </div>
       </div>
+      {confirmDeleteId && (
+        <ConfirmDialog
+          title="Delete this personal reference?"
+          confirmLabel="Delete reference"
+          pending={saving}
+          close={() => setConfirmDeleteId(null)}
+          confirm={async () => {
+            const id = confirmDeleteId;
+            if (await action("delete", { id })) {
+              setConfirmDeleteId(null);
+              setArticle(null);
+            }
+          }}
+        >
+          This removes the saved note from your personal reference library. Official
+          documentation articles are unaffected.
+        </ConfirmDialog>
+      )}
     </div>
   );
 }

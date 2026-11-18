@@ -28,7 +28,7 @@ try {
       ? readFileSync(path, "utf8").trim()
       : "starting";
     throw new Error(
-      `Another Forge worker is using this data directory (PID ${pid}). Stop it before starting another.`,
+      `Another Syntra worker is using this data directory (PID ${pid}). Stop it before starting another.`,
     );
   }
   throw error;

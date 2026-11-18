@@ -41,7 +41,9 @@ export default function GameOps({
     [range, setRange] = useState("30");
   const game = data.games.find((g: any) => g.id === selectedGame);
   const telemetry = useResource(
-    game ? `telemetry?gameId=${encodeURIComponent(game.id)}` : null,
+    game && !data.standaloneMode
+      ? `telemetry?gameId=${encodeURIComponent(game.id)}`
+      : null,
     data.settings.featureRevision || 0,
   );
   const snapshots: any[] = telemetry.data?.snapshots || [];
@@ -310,7 +312,7 @@ export default function GameOps({
                         {displayDate(newest.fetchedAt)}
                       </>
                     ) : (
-                      "Import an authorized Roblox analytics export. Forge cannot access players, revenue, sessions or retention without your data."
+                      "Import an authorized Roblox analytics export. Syntra cannot access players, revenue, sessions or retention without your data."
                     )}
                   </p>
                 </div>

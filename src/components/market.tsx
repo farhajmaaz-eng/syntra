@@ -350,7 +350,7 @@ export default function Market({
           <div className="form">
             <p>
               {selected.description ||
-                "No game-loop or monetization description was supplied. Forge will not infer one as an observed fact."}
+                "No game-loop or monetization description was supplied. Syntra will not infer one as an observed fact."}
             </p>
             <p>
               Genre: {selected.genre || "Not supplied"}. Collected{" "}

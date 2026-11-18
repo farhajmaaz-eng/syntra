@@ -42,7 +42,13 @@ export default function ProviderSettings({
       <small>
         Active: {active.label}
         {active.configured
-          ? ` · ${active.keySource === "environment" ? "environment key" : "locally saved key"}`
+          ? ` · ${
+              active.keySource === "environment"
+                ? "environment key"
+                : data.standaloneMode
+                  ? "saved on device (standalone)"
+                  : "locally saved key"
+            }`
           : " · no API key"}
       </small>
       <form
@@ -60,7 +66,9 @@ export default function ProviderSettings({
             setApiKey("");
             setShowKey(false);
             setResult(
-              "Provider saved. The key stays on this installation’s server.",
+              data.standaloneMode
+                ? "Provider saved locally (works without Studio or worker)."
+                : "Provider saved. The key stays on this installation’s server.",
             );
           }
         }}

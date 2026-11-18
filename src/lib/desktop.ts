@@ -1,12 +1,12 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 export type DesktopPreferences = {
-  theme: "nord" | "graphite" | "evergreen";
+  theme: "obsidian" | "nord" | "graphite" | "evergreen";
   density: "compact" | "comfortable";
   focus: boolean;
 };
 const defaults: DesktopPreferences = {
-  theme: "nord",
+  theme: "obsidian",
   density: "compact",
   focus: false,
 };
@@ -17,7 +17,7 @@ export function useDesktopPreferences() {
     try {
       const saved = JSON.parse(localStorage.getItem("forge-desktop") || "{}");
       setPreferences({
-        theme: ["nord", "graphite", "evergreen"].includes(saved.theme)
+        theme: ["obsidian", "nord", "graphite", "evergreen"].includes(saved.theme)
           ? saved.theme
           : defaults.theme,
         density: saved.density === "comfortable" ? "comfortable" : "compact",
@@ -44,7 +44,7 @@ export function useDesktopPreferences() {
 }
 export function downloadDiagnostics(data: any) {
   const report = {
-    app: "Forge Studio",
+    app: "Syntra Studio",
     generatedAt: new Date().toISOString(),
     worker: {
       heartbeat: data?.settings.workerHeartbeat || 0,
@@ -86,7 +86,7 @@ export function downloadDiagnostics(data: any) {
   );
   const a = document.createElement("a");
   a.href = url;
-  a.download = "forge-diagnostics.json";
+  a.download = "syntra-diagnostics.json";
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

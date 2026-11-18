@@ -321,7 +321,9 @@ export function NewTaskDialog({
   close: () => void;
 }) {
   const [agent, setAgent] = useState("Lead"),
-    [project, setProject] = useState(gameId),
+    [project, setProject] = useState(
+      gameId || data.games.find((g: any) => g.stage !== "archived")?.id || "__auto__",
+    ),
     [error, setError] = useState("");
   const [requestKey] = useState(() => crypto.randomUUID());
   return (
@@ -360,9 +362,11 @@ export function NewTaskDialog({
             required
             value={project}
             onValueChange={setProject}
-            placeholder="Select a game"
+            placeholder="Syntra Sandbox"
           >
-            <option value="">Select a game</option>
+            {!data.games.some((g: any) => g.stage !== "archived") && (
+              <option value="__auto__">Syntra Sandbox · auto-created</option>
+            )}
             {data.games
               .filter((g: any) => g.stage !== "archived")
               .map((g: any) => (
@@ -373,11 +377,6 @@ export function NewTaskDialog({
               ))}
           </CustomSelect>
         </label>
-        {!data.games.length && (
-          <Link href="/games" className="text-link">
-            Add a project first <ArrowUpRight size={13} />
-          </Link>
-        )}
         <label>
           Objective
           <textarea
@@ -461,7 +460,7 @@ export function NewTaskDialog({
             {error}
           </p>
         )}
-        <Button disabled={busy || !project}>
+        <Button disabled={busy}>
           {busy ? "Creating…" : "Create task"}
           <Plus size={14} />
         </Button>

@@ -25,24 +25,28 @@ export function Appearance({
         <fieldset>
           <legend>Color scheme</legend>
           <div className="theme-options">
-            {(["nord", "graphite", "evergreen"] as const).map((theme) => (
-              <button
-                type="button"
-                key={theme}
-                className={`theme-option ${theme}`}
-                aria-pressed={preferences.theme === theme}
-                onClick={() => update({ theme })}
-              >
-                <span />
-                <strong>
-                  {theme === "nord"
-                    ? "Nord"
-                    : theme === "graphite"
-                      ? "Graphite"
-                      : "Evergreen"}
-                </strong>
-              </button>
-            ))}
+            {(["obsidian", "nord", "graphite", "evergreen"] as const).map(
+              (theme) => (
+                <button
+                  type="button"
+                  key={theme}
+                  className={`theme-option ${theme}`}
+                  aria-pressed={preferences.theme === theme}
+                  onClick={() => update({ theme })}
+                >
+                  <span />
+                  <strong>
+                    {theme === "obsidian"
+                      ? "Obsidian"
+                      : theme === "nord"
+                        ? "Nord"
+                        : theme === "graphite"
+                          ? "Graphite"
+                          : "Evergreen"}
+                  </strong>
+                </button>
+              ),
+            )}
           </div>
         </fieldset>
         <fieldset>

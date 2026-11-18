@@ -302,7 +302,7 @@ it("rejects a second worker before it can touch SQLite or recover another worker
       },
     );
     expect(child.status).not.toBe(0);
-    expect(child.stderr).toContain("Another Forge worker");
+    expect(child.stderr).toContain("Another Syntra worker");
     expect(existsSync(resolve(locked, "forge.sqlite"))).toBe(false);
   } finally {
     release?.();

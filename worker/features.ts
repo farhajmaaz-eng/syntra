@@ -23,6 +23,18 @@ function game(id: string) {
   if (!g) throw new Error("Game not found");
   return g;
 }
+function ensureProject(gameId?: string) {
+  if (gameId && gameId !== "__auto__") return game(gameId);
+  const existing: any = db
+    .prepare("SELECT * FROM games WHERE stage!='archived' ORDER BY rowid LIMIT 1")
+    .get();
+  if (existing) return existing;
+  const id = randomUUID();
+  db.prepare(
+    "INSERT INTO games(id,name,studio_id,stage,universe_id,place_id) VALUES (?,?,?,?,?,?)",
+  ).run(id, "Syntra Sandbox", "", "prototype", "", "");
+  return game(id);
+}
 function runForTask(id: string) {
   const t = task(id);
   if (!t) throw new Error("Task not found");
@@ -59,7 +71,7 @@ function audit(
 export function createRequest(body: unknown) {
   const a = z
     .object({
-      gameId: identifier,
+      gameId: z.string().max(200).optional().default(""),
       objective: z.string().trim().min(1).max(20000),
       agent: role.default("Lead"),
       priority: z.number().int().min(0).max(3).default(1),
@@ -70,12 +82,13 @@ export function createRequest(body: unknown) {
     })
     .parse(body);
   return db.transaction(() => {
+    const g = ensureProject(a.gameId);
     if (a.requestKey) {
       const existing: any = db
         .prepare("SELECT * FROM runs WHERE request_key=?")
         .get(a.requestKey);
       if (existing) {
-        if (existing.game_id !== a.gameId || existing.request !== a.objective)
+        if (existing.game_id !== g.id || existing.request !== a.objective)
           throw new Error(
             "This request key was already used for a different request",
           );
@@ -91,13 +104,8 @@ export function createRequest(body: unknown) {
         };
       }
     }
-    const g = game(a.gameId);
     if (g.stage === "archived")
       throw new Error("Restore this project before creating work");
-    if (!g.studio_id && a.agent !== "Lead")
-      throw new Error(
-        "Connect a Studio instance first, or assign Lead to prepare a plan",
-      );
     for (const id of a.dependencies)
       if (runForTask(id).run.game_id !== g.id)
         throw new Error("Dependencies must belong to the selected game");
@@ -499,7 +507,7 @@ export function featureRead(path: string, query: URLSearchParams): unknown {
       integration: {
         status: "import-only",
         message:
-          "Import authorized Roblox analytics exports. Forge does not have access to player, revenue or retention telemetry.",
+          "Import authorized Roblox analytics exports. Syntra does not have access to player, revenue or retention telemetry.",
       },
     };
   }
@@ -609,7 +617,7 @@ export function featureAction(
     const a = z
       .object({
         content: z.string().min(1).max(20000),
-        gameId: identifier,
+        gameId: z.string().max(200).optional().default(""),
         reviewPlan: z.boolean().optional(),
         requestKey: z.string().optional(),
       })
@@ -729,7 +737,7 @@ export function featureAction(
     const a = z
       .object({
         agent: role,
-        gameId: identifier,
+        gameId: z.string().max(200).optional().default(""),
         content: z.string().trim().min(5).max(20000),
         taskId: z.string().optional(),
         requestKey: z.string().optional(),
@@ -737,7 +745,7 @@ export function featureAction(
       .parse(body);
     if (a.taskId) {
       const { t, run } = runForTask(a.taskId);
-      if (run.game_id !== a.gameId || t.agent !== a.agent)
+      if ((a.gameId && run.game_id !== a.gameId) || t.agent !== a.agent)
         throw new Error(
           "Agent context must match the selected project and agent",
         );
