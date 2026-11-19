@@ -30,6 +30,11 @@ internet access; Syntra’s diagrams are bundled for offline use.
 The library is a retrieval source, not a system-prompt dump. Every entry is
 split into heading-aware sections of roughly 4,000 characters. Agents can:
 
+- `library_grep` — find literal Luau identifiers or code in playbooks and
+  recipes. Results include the matching line, context, source links and the
+  section ID for `library_read`. Set `kind` to expand the scope or pass
+  `id` to search one guide. Continue with the returned `nextOffset` to
+  see more hits.
 - `library_search` — search entries and section text, filtered by agent, kind or
   category. Results include matched headings and snippets.
 - `library_read` — read an entry or one specific section by ID.

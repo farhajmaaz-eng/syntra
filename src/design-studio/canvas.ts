@@ -3,6 +3,7 @@ import { CanvasRoot, CanvasSurface, provideEditor } from "@open-pencil/vue";
 import { createDefaultEditorState, createEditor } from "@open-pencil/core/editor";
 import { getCanvasKit } from "@open-pencil/core/canvaskit";
 import { fontManager } from "@open-pencil/core/text";
+import { canvasWasmUrl } from "./assets";
 import { decodeDesign, encodeDesign, type layerTypes } from "./scene";
 
 export type CanvasTool = "SELECT" | "HAND" | (typeof layerTypes)[number];
@@ -23,6 +24,14 @@ export type DesignCanvas = {
 };
 
 let canvasKitReady: ReturnType<typeof getCanvasKit> | undefined;
+export function prepareDesignCanvas() {
+  canvasKitReady ??= getCanvasKit({ locateFile: () => canvasWasmUrl }).catch((error) => {
+    canvasKitReady = undefined;
+    throw error;
+  });
+  return canvasKitReady;
+}
+
 export async function mountDesignCanvas(
   host: HTMLElement,
   serialized: string,
@@ -35,11 +44,7 @@ export async function mountDesignCanvas(
 ): Promise<DesignCanvas> {
   fontManager.setOnlineFontProviders({ google: false, fontsource: false, bunny: false, fontshare: false });
   fontManager.setBundledFontLocator((asset) => "/api/design-assets/" + asset.split("/").at(-1));
-  canvasKitReady ??= getCanvasKit({ locateFile: () => "/api/design-assets/canvaskit.wasm" }).catch((error) => {
-    canvasKitReady = undefined;
-    throw error;
-  });
-  await canvasKitReady;
+  await prepareDesignCanvas();
   const graph = decodeDesign(serialized);
   const state = reactive(createDefaultEditorState(graph.getPages()[0].id));
   const editor = createEditor({ graph, state });

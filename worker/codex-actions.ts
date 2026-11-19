@@ -1,3 +1,4 @@
+import { isLibraryTool, libraryToolDefinitions, runLibraryTool } from "./library-tools";
 import { creativeDefinitions, isCreativeTool, runCreativeTool } from "./creative-tools";
 import { z } from "zod";
 import { get, set, event, db } from "./store";
@@ -132,7 +133,9 @@ export async function codexAction(
         model: z.string().trim().max(200).optional(),
       })
       .parse(body);
-    const row = await codex.createSession({ ...a, dynamicTools: creativeDefinitions("Codex") });
+    const row = await codex.createSession({
+      ...a, dynamicTools: [...creativeDefinitions("Codex"), ...libraryToolDefinitions],
+    });
     return { ok: true, session: row, sessions: codexSessions() };
   }
   if (path === "codex/session/turn") {
@@ -152,7 +155,8 @@ export async function codexAction(
         sessionId: a.id,
         prompt: a.prompt,
         toolHandler: async (call) => {
-          if (!isCreativeTool(call.tool)) throw new Error("Unknown Syntra creative tool.");
+          if (isLibraryTool(call.tool)) return runLibraryTool("Codex", call.tool, call.arguments ?? {});
+          if (!isCreativeTool(call.tool)) throw new Error("Unknown Syntra tool.");
           return runCreativeTool("Codex", call.tool, call.arguments ?? {});
         },
       })

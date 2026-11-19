@@ -134,10 +134,10 @@ export const TopHeader: React.FC = () => {
         <button
           onClick={() => useEditorStore.getState().setActiveModal('export')}
           className="meshforge-export flex items-center gap-1 px-2 py-1 rounded-md"
-          title="Export OBJ / GLB / FBX with Roblox Studio Presets"
+          title="Validate and export for Roblox Studio"
         >
           <Download className="w-3.5 h-3.5" />
-          <span>Export</span>
+          <span>Studio Export</span>
         </button>
 
         <div className="h-4 w-[1px] bg-[var(--border)] mx-0.5" />
@@ -195,11 +195,10 @@ export const TopHeader: React.FC = () => {
         <button
           onClick={() => useEditorStore.getState().setActiveModal('mcp_connect')}
           className="flex items-center gap-1 px-2 py-1 bg-[var(--accent-wash)] hover:bg-[var(--surface-hover)] border border-[#2d4a77] rounded-md text-[var(--accent)] font-medium"
-          title="Remote MCP Server Endpoint & Live AI Sync Configuration"
+          title="Connect a Codex or MCP client to this project"
         >
           <Terminal className="w-3.5 h-3.5 text-[var(--accent)]" />
-          <span>MCP Live</span>
-          <span className="w-1.5 h-1.5 rounded-full bg-[#34d399]" />
+          <span>Connect Codex</span>
         </button>
 
         <div className="flex items-center bg-[var(--surface)] border border-[var(--border)] rounded-md p-0.5">

@@ -1,16 +1,18 @@
 "use client";
 
 import Link from "next/link";
+import { preload, preloadModule } from "react-dom";
 import { ArrowLeft, Focus, MousePointer2, Redo2, Save, Square, Circle, Type, Frame, Hand, Trash2, Undo2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useDesktopPreferences } from "@/lib/desktop";
-import type { CanvasLayer, CanvasTool, DesignCanvas, mountDesignCanvas } from "@/design-studio/canvas";
+import { canvasModuleUrl, canvasWasmUrl } from "@/design-studio/assets";
+import type { CanvasLayer, CanvasTool, DesignCanvas, mountDesignCanvas, prepareDesignCanvas } from "@/design-studio/canvas";
 
-function loadCanvasRuntime(): Promise<{ mountDesignCanvas: typeof mountDesignCanvas }> {
+function loadCanvasRuntime(): Promise<{ mountDesignCanvas: typeof mountDesignCanvas; prepareDesignCanvas: typeof prepareDesignCanvas }> {
   // The Vue/CanvasKit runtime is prebundled separately to keep Next's graph and
   // Android build memory small. It mounts in this page's own DOM.
-  const url = "/design-runtime/canvas.js";
+  const url = canvasModuleUrl;
   return import(/* webpackIgnore: true */ /* turbopackIgnore: true */ url);
 }
 
@@ -21,6 +23,8 @@ const tools = [
 type SavedDesign = { scene: string; revision: number };
 
 export default function DesignStudioClient() {
+  preloadModule(canvasModuleUrl);
+  preload(canvasWasmUrl, { as: "fetch", crossOrigin: "anonymous", type: "application/wasm" });
   useDesktopPreferences();
   const host = useRef<HTMLDivElement>(null);
   const canvas = useRef<DesignCanvas | null>(null);
@@ -93,7 +97,11 @@ export default function DesignStudioClient() {
       if (!response.ok) throw new Error("Could not load the saved design.");
       return response.json() as Promise<SavedDesign>;
     };
-    void Promise.all([loadCanvasRuntime(), load()]).then(async ([module, scene]) => {
+    const runtime = loadCanvasRuntime().then(async module => {
+      if (!disposed) await module.prepareDesignCanvas();
+      return module;
+    });
+    void Promise.all([runtime, load()]).then(async ([module, scene]) => {
       mount = module.mountDesignCanvas;
       await open(scene);
     }).catch((error) => {

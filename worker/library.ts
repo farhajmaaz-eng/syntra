@@ -191,6 +191,66 @@ export function libraryRead(
   return entry;
 }
 
+type GrepKind = "authored" | "official" | "playbook" | "recipe" | "personal" | "all";
+type GrepSection = {
+  id: string; entryId: string; heading: string; content: string; title: string;
+  source: string | null; sources: string | null;
+};
+
+const grepSections = db.prepare(`
+  SELECT s.id,s.entry_id AS entryId,s.heading,s.content,e.title,
+    json_extract(e.payload,'$.source') AS source, json_extract(e.payload,'$.sources') AS sources
+  FROM library_sections s JOIN library_entries e ON e.id=s.entry_id
+  WHERE (@id IS NULL OR e.id=@id)
+    AND (@kind='all'
+      OR (@kind='authored' AND json_extract(e.payload,'$.kind') IN ('playbook','recipe'))
+      OR json_extract(e.payload,'$.kind')=@kind)
+    AND instr(CASE WHEN @sensitive THEN s.content ELSE lower(s.content) END, @needle)>0
+  ORDER BY s.entry_id,s.ordinal
+`);
+
+export function libraryGrep(pattern: string, options: {
+  kind?: GrepKind; id?: string; caseSensitive?: boolean; context?: number; offset?: number; limit?: number;
+} = {}) {
+  const kind = options.kind ?? "authored";
+  const context = Math.min(options.context ?? 1, 2);
+  const offset = options.offset ?? 0;
+  const limit = Math.min(options.limit ?? 10, 15);
+  const results: Array<{
+    id: string; title: string; sectionId: string; heading: string;
+    line: number; column: number; text: string;
+    context: Array<{ line: number; text: string }>; sources: string[];
+  }> = [];
+  if (!pattern.trim() || /[\r\n]/.test(pattern)) return { pattern, kind, results, nextOffset: null };
+  // SQLite lower() is ASCII-only. Match the same way when locating exact columns.
+  const fold = (value: string) => options.caseSensitive ? value : value.replace(/[A-Z]/g, letter => letter.toLowerCase());
+  const needle = fold(pattern);
+  let seen = 0;
+  const shorten = (line: string, start = 0) => (start ? "…" : "") + line.slice(start, start + 180) +
+    (line.length > start + 180 ? "…" : "");
+  const sections = grepSections.iterate({
+    id: options.id ?? null, kind, sensitive: options.caseSensitive ? 1 : 0, needle,
+  });
+  for (const section of sections as Iterable<GrepSection>) {
+    const lines = section.content.split("\n");
+    for (const [index, line] of lines.entries()) {
+      const column = fold(line).indexOf(needle);
+      if (column === -1 || seen++ < offset) continue;
+      if (results.length === limit) return { pattern, kind, results, nextOffset: offset + limit };
+      const from = Math.max(0, index - context);
+      const refs = section.sources ? JSON.parse(section.sources) as Array<{ url: string }> : [];
+      results.push({
+        id: section.entryId, title: section.title, sectionId: section.id, heading: section.heading,
+        line: index + 1, column: column + 1, text: shorten(line, Math.max(0, column - 35)),
+        context: lines.slice(from, index + context + 1).flatMap((text, i) =>
+          from + i === index ? [] : [{ line: from + i + 1, text: shorten(text) }]),
+        sources: [...new Set([section.source, ...refs.map(ref => ref.url)].filter((url): url is string => Boolean(url)))].slice(0, 3),
+      });
+    }
+  }
+  return { pattern, kind, results, nextOffset: null };
+}
+
 export type LibrarySearchOptions = {
   agent?: string;
   kind?: string;

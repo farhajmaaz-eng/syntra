@@ -43,7 +43,7 @@ function serverRequest(method, params) {
   });
 }
 function responseText(value) {
-  const items = value?.result?.contentItems || [];
+  const items = value?.contentItems || [];
   return items.map((item) => item.text || "").join("\n");
 }
 function extractCalls(prompt) {

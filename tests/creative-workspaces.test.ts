@@ -79,3 +79,45 @@ it("lets Scenic create via actual MCP, stages a GLB and constrains cloud uploads
   writeFileSync(artifact.filepath, "glTFinvalid bytes here");
   expect(() => validateIllustrateUpload(upload)).toThrow();
 });
+
+it("streams the versioned CanvasKit module with an immutable cache policy", async () => {
+  const { GET: asset } = await import("../src/app/api/design-assets/[asset]/route");
+  const { canvasWasmUrl } = await import("../src/design-studio/assets");
+  const response = await asset(new Request("http://localhost" + canvasWasmUrl), {
+    params: Promise.resolve({ asset: "canvaskit.wasm" }),
+  });
+  expect(response.headers.get("content-type")).toBe("application/wasm");
+  expect(response.headers.get("cache-control")).toContain("immutable");
+  const reader = response.body!.getReader();
+  const { value } = await reader.read();
+  expect(Array.from(value!.slice(0, 4))).toEqual([0, 97, 115, 109]);
+  await reader.cancel();
+});
+
+it("connects an MCP SDK client to the authenticated Illustrate endpoint", async () => {
+  const { POST } = await import("../src/app/api/illustrate/mcp/route");
+  const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+  const { StreamableHTTPClientTransport } = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
+  const url = new URL("http://localhost/api/illustrate/mcp");
+  const missing = await POST(new Request(url, { method: "POST" }));
+  expect(missing.status).toBe(401);
+  process.env.SYNTRA_ILLUSTRATE_MCP_KEY = "illustrate-test-key";
+  const client = new Client({ name: "test", version: "1.0.0" });
+  const transport = new StreamableHTTPClientTransport(url, {
+    requestInit: { headers: { Authorization: "Bearer illustrate-test-key" } },
+    fetch: async (input, init) => {
+      const request = new Request(input, init);
+      return request.method === "POST" ? POST(request) : new Response(null, { status: 405 });
+    },
+  });
+  try {
+    await client.connect(transport);
+    const { tools } = await client.listTools();
+    expect(tools.map(tool => tool.name)).toContain("inspect_scene");
+    const result = await client.callTool({ name: "inspect_scene", arguments: {} });
+    expect(result.isError).not.toBe(true);
+  } finally {
+    await client.close();
+    delete process.env.SYNTRA_ILLUSTRATE_MCP_KEY;
+  }
+});

@@ -146,7 +146,7 @@ export const BottomWorkbench: React.FC = () => {
       preset: 'MeshPart_Standard',
     },
     export_roblox_model: {
-      format: 'obj',
+      format: 'glb',
       scalePreset: 'meters_0_28',
       upAxis: 'Y',
     },
@@ -263,9 +263,9 @@ export const BottomWorkbench: React.FC = () => {
         <div className="flex items-center gap-1">
           {(
             [
-              { id: 'mcp', label: 'MCP tools', icon: Wand2 },
-              { id: 'uv', label: '2D UV Editor', icon: Grid },
-              { id: 'assets', label: 'Roblox Prefab Library', icon: Boxes },
+              { id: 'assets', label: 'Roblox Prefabs', icon: Boxes },
+              { id: 'uv', label: 'UV Editor', icon: Grid },
+              { id: 'mcp', label: 'Agent Tools', icon: Wand2 },
               { id: 'console', label: `Engine & Sync Log (${logs.length})`, icon: Terminal },
             ] as const
           ).map((t) => {

@@ -12,6 +12,7 @@ process.env.CODEX_APP_SERVER_ARGS = JSON.stringify([
 
 const store = await import("../worker/store");
 const features = await import("../worker/features");
+const { codexAction } = await import("../worker/codex-actions");
 const codexModule = await import("../worker/codex");
 const { codex } = codexModule;
 const { db } = store;
@@ -197,4 +198,22 @@ describe("OpenAI Codex app-server integration", () => {
       error: expect.stringContaining("Fixture failure"),
     });
   });
+});
+
+it("gives new standalone Codex sessions exact playbook retrieval", async () => {
+  const active = new Set<string>();
+  const created = await codexAction("codex/session/create", { title: "Playbook lookup", cwd: project }, active);
+  const id = created?.session?.id;
+  expect(id).toBeTruthy();
+  await codexAction("codex/session/turn", {
+    id,
+    prompt: 'FIXTURE_CALLS: [{"tool":"library_grep","arguments":{"pattern":"ProcessReceipt","limit":1}}]',
+  }, active);
+  const turn = await waitFor(() => db.prepare(
+    "SELECT status,result,error FROM codex_turns WHERE session_id=? AND status!='running'",
+  ).get(id) as { status: string; result: string; error: string } | undefined);
+  expect(turn.status, turn.error).toBe("completed");
+  expect(turn.result).toContain("library_grep:");
+  expect(turn.result).toContain("sectionId");
+  expect(turn.result).toContain("ProcessReceipt");
 });

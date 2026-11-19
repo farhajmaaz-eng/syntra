@@ -6,7 +6,7 @@ import authored from "../library/playbooks.json";
 import official from "../library/official.json";
 const dir = mkdtempSync(resolve(tmpdir(), "syntra-library-"));
 process.env.SYNTRA_DATA_DIR = dir;
-const { librarySearch, libraryRead, libraryAction, libraryBrief, libraryStats } =
+const { librarySearch, libraryRead, libraryAction, libraryBrief, libraryStats, libraryGrep } =
   await import("../worker/library");
 const { db } = await import("../worker/store");
 afterAll(() => {
@@ -115,4 +115,19 @@ it("protects official entries and rejects executable image links", () => {
       image: "javascript:alert(1)",
     }),
   ).toThrow();
+});
+
+
+it("greps literal code with section context and pagination", () => {
+  const first = libraryGrep("ProcessReceipt", { kind: "playbook", limit: 1 });
+  expect(first.results).toHaveLength(1);
+  const [match] = first.results;
+  expect(match.text).toMatch(/ProcessReceipt/i);
+  const section = libraryRead(match.id, { sectionId: match.sectionId });
+  expect(section.content.split("\n")[match.line - 1].slice(match.column - 1)).toMatch(/^ProcessReceipt/i);
+  expect(match.sources.length).toBeGreaterThan(0);
+  expect(first.nextOffset).toBe(1);
+  expect(libraryGrep("ProcessReceipt", { kind: "playbook", offset: 1 }).results[0]).not.toEqual(match);
+  expect(libraryGrep("processreceipt", { caseSensitive: true }).results).toEqual([]);
+  expect(libraryGrep("ProcessReceipt.*").results).toEqual([]);
 });

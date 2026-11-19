@@ -226,7 +226,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   leftSidebarOpen: true,
   rightSidebarOpen: true,
   bottomPanelOpen: true,
-  bottomTab: 'mcp',
+  bottomTab: 'assets',
   inspectorTab: 'modeling',
   activeModal: 'none',
 

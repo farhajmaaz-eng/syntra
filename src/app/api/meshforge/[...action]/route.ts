@@ -50,7 +50,7 @@ function fromEditor(request: Request) {
 }
 
 function hasMcpKey(request: Request) {
-  const configured = process.env.SYNTRA_MESHFORGE_MCP_KEY;
+  const configured = process.env.SYNTRA_ILLUSTRATE_MCP_KEY || process.env.SYNTRA_MESHFORGE_MCP_KEY;
   const header = request.headers.get("authorization");
   if (!configured || !header?.startsWith("Bearer ")) return false;
   const supplied = Buffer.from(header.slice(7));
@@ -75,7 +75,7 @@ async function handle(
       }
       const editor = resource === "tools";
       if (editor ? !fromEditor(request) : !hasMcpKey(request)) {
-        return json({ error: "MeshForge tool authorization required." }, editor ? 403 : 401);
+        return json({ error: "Illustrate tool authorization required." }, editor ? 403 : 401);
       }
       const projectId = url.searchParams.get("projectId") || defaultMeshProject;
       const actor = editor ? "editor" : "mcp";

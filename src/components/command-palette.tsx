@@ -24,6 +24,7 @@ export default function CommandPalette({
     ["Task board", "/tasks"],
     ["Games", "/games"],
     ["Illustrate", "/illustrate"],
+    ["Game Intelligence", "/game-intelligence"],
     ["Design Studio", "/design-studio"],
     ["Library", "/library"],
     ["Reviews", "/reviews"],

@@ -120,11 +120,12 @@ export const EditorModals: React.FC = () => {
   };
 
   const originUrl = typeof window !== 'undefined' ? window.location.origin : '';
-  const mcpUrl = `${originUrl}/api/meshforge/mcp?projectId=${encodeURIComponent(projectId)}`;
+  const mcpUrl = `${originUrl}/api/illustrate/mcp?projectId=${encodeURIComponent(projectId)}`;
+  const codexCommand = `codex mcp add syntra-illustrate --url "${mcpUrl}" --bearer-token-env-var SYNTRA_ILLUSTRATE_MCP_KEY`;
   const claudeConfigJson = JSON.stringify(
     {
       mcpServers: {
-        'meshforge-roblox': {
+        'syntra-illustrate': {
           type: 'streamable-http',
           url: mcpUrl,
           headers: { Authorization: 'Bearer YOUR_CONFIGURED_KEY' },
@@ -144,7 +145,7 @@ export const EditorModals: React.FC = () => {
           <span id="meshforge-modal-title" className="font-semibold text-white tracking-wide text-[13px]">
             {activeModal === 'projects' && 'Mesh projects'}
             {activeModal === 'export' && 'Roblox Studio 3D Exporter (GLB / FBX / OBJ)'}
-            {activeModal === 'mcp_connect' && 'MeshForge MCP connection'}
+            {activeModal === 'mcp_connect' && 'Connect Codex to Illustrate'}
           </span>
           <button onClick={close} aria-label="Close dialog" className="p-1 text-[var(--text-secondary)] hover:text-white">
             <X className="w-4 h-4" />
@@ -228,6 +229,9 @@ export const EditorModals: React.FC = () => {
            =================================================================== */}
         {activeModal === 'export' && validation && (
           <div className="p-4 space-y-3">
+            <p className="text-[11px] text-[var(--text-secondary)]">
+              Keep GLB and +Y Up for the default Roblox Studio workflow. Open Studio’s 3D Importer to import your export.
+            </p>
             <div className="grid grid-cols-3 gap-1.5">
               {(
                 [
@@ -330,12 +334,21 @@ export const EditorModals: React.FC = () => {
             <div className="flex items-start gap-2 p-2.5 bg-[#13221c] border border-[#1f4d37] rounded-md text-[11px] text-[#a7f3d0]">
               <CheckCircle2 className="w-4 h-4 text-[#34d399] shrink-0 mt-0.5" />
               <div>
-                The editor console connects on this origin. For an external MCP client, set
-                <code> SYNTRA_MESHFORGE_MCP_KEY </code> on the Syntra server and supply it as a bearer token.
-                Tool changes appear here when the scene has no unsaved edits.
+                Scenic and Codex inside Syntra already have Illustrate tools. For Codex CLI,
+                set the same <code>SYNTRA_ILLUSTRATE_MCP_KEY</code> in the Syntra server and Codex environments,
+                then run the command below. Save the scene before asking an agent to edit it.
               </div>
             </div>
 
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[11px] text-[var(--text-secondary)]">
+                <span>Codex CLI</span>
+                <button onClick={() => copyToClipboard(codexCommand, 'codex')} className="flex items-center gap-1 text-[var(--accent)] hover:underline">
+                  <Copy className="w-3 h-3" /> {copiedText === 'codex' ? 'Copied!' : 'Copy command'}
+                </button>
+              </div>
+              <pre className="bg-[var(--app-bg)] border border-[var(--border)] p-2 rounded-md font-mono text-[11px] select-all overflow-x-auto">{codexCommand}</pre>
+            </div>
             {copiedText === "failed" && <p role="status">Clipboard unavailable. Select the text to copy it.</p>}
             <div className="space-y-1">
               <div className="flex items-center justify-between text-[11px] text-[var(--text-secondary)]">
@@ -355,7 +368,7 @@ export const EditorModals: React.FC = () => {
             <div className="space-y-1">
               <div className="flex items-center justify-between text-[11px] text-[var(--text-secondary)]">
                 <span className="flex items-center gap-1">
-                  <Terminal className="w-3.5 h-3.5" /> MCP Client Config (Cursor / Claude / Windsurf)
+                  <Terminal className="w-3.5 h-3.5" /> Other MCP clients
                 </span>
                 <button
                   onClick={() => copyToClipboard(claudeConfigJson, 'cfg')}

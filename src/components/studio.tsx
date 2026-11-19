@@ -52,6 +52,8 @@ import CommandPalette from "./command-palette";
 import WorkspaceShell, { navigation as nav } from "./workspace-shell";
 const LibraryHub = dynamic(() => import("./library-hub"));
 const CodexWorkspace = dynamic(() => import("./codex-workspace"));
+const GameIntelligence = dynamic(() => import("./game-intelligence"));
+const IntelligenceSettings = dynamic(() => import("./game-intelligence/settings"));
 const GameOps = dynamic(() => import("./game-ops"));
 const Market = dynamic(() => import("./market"));
 const Pitches = dynamic(() => import("./pitches"));
@@ -506,6 +508,7 @@ export default function Studio({
                     codex:
                       "Run and review OpenAI Codex sessions in your local project.",
                     games: "Manage local Roblox Studio targets.",
+                    "game-intelligence": "Explore public Roblox charts, metrics and history.",
                     reviews: "Approve tool calls and accept verified work.",
                     logs: "Inspect worker events and API usage.",
                     settings: "Codex, Studio connection, runtime limits and appearance.",
@@ -552,7 +555,7 @@ export default function Studio({
             </button>
           </div>
         )}
-        {!data && !error && <Skeleton page={page} />}
+        {!data && !error && page !== "game-intelligence" && <Skeleton page={page} />}
         {data && page === "home" && (
           <Overview
             data={data}
@@ -594,15 +597,21 @@ export default function Studio({
             focusVersion={taskFocusVersion}
           />
         )}
+        {page === "game-intelligence" && <GameIntelligence />}
         {data && page === "games" && (
-          <GameOps
-            data={data}
-            selectedGame={selectedGame}
-            chooseGame={chooseGame}
-            act={act}
-            busy={busy}
-            newTask={openNewTask}
-          />
+          <>
+            <Link href="/game-intelligence" className="button button-outline">
+              <Gauge size={16} /> Browse Roblox Game Intelligence
+            </Link>
+            <GameOps
+              data={data}
+              selectedGame={selectedGame}
+              chooseGame={chooseGame}
+              act={act}
+              busy={busy}
+              newTask={openNewTask}
+            />
+          </>
         )}
         {data && page === "market" && (
           <Market data={data} act={act} newTask={openNewTask} />
@@ -699,6 +708,7 @@ export default function Studio({
             />
           </>
         )}
+        {page === "settings" && <IntelligenceSettings />}
         <footer className="footer">
           <span>
             <ShieldCheck size={12} /> Local workspace{" "}
