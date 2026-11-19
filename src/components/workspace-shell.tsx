@@ -22,6 +22,7 @@ import {
   RefreshCw,
   Search,
   Settings,
+  SquareTerminal,
   Users,
   X,
 } from "lucide-react";
@@ -37,6 +38,7 @@ export const navigation = [
   ["chat", "Lead", MessageSquare],
   ["team", "Team", Users],
   ["tasks", "Tasks", ListTodo],
+  ["codex", "Codex", SquareTerminal],
   ["games", "Games", Gamepad2],
   ["reviews", "Review", Images],
   ["library", "Library", BookOpen],
@@ -53,69 +55,29 @@ export function UsagePanel({
   data: any;
   compact?: boolean;
 }) {
-  if (!data || !Number.isFinite(data.settings.cap)) return null;
-  if (data.provider?.id === "nvidia")
-    return (
-      <section
-        className={`usage-panel ${compact ? "compact" : ""}`}
-        aria-label="NVIDIA trial usage"
-      >
-        <div className="usage-heading">
-          <Gauge size={15} />
-          <strong>Free-endpoint usage</strong>
-          <Link href="/settings">Settings</Link>
-        </div>
-        <p>
-          {(
-            (data.spend.nimInputTokens || 0) + (data.spend.nimOutputTokens || 0)
-          ).toLocaleString()}{" "}
-          tokens recorded
-        </p>
-        <small>Hosted trial · NVIDIA limits apply</small>
-        {!compact && (
-          <Link className="text-link" href="/logs">
-            See all usage <ChevronDown size={12} />
-          </Link>
-        )}
-      </section>
-    );
-  const { cost, reserved } = data.spend;
-  const cap = data.settings.cap;
-  const percent = cap > 0 ? Math.round(((cost + reserved) / cap) * 100) : 0;
+  if (!data) return null;
+  const usage = data.codexUsage || data.codex?.usage || {};
+  const tokens =
+    (usage.inputTokens || 0) + (usage.outputTokens || 0);
   return (
     <section
       className={`usage-panel ${compact ? "compact" : ""}`}
-      aria-label="Workspace API budget"
+      aria-label="Codex token usage"
     >
       <div className="usage-heading">
         <Gauge size={15} />
-        <strong>{compact ? "Workspace budget" : "API budget"}</strong>
-        {compact ? (
-          <Link href="/settings">Change</Link>
-        ) : (
-          <span>{cap > 0 ? `${percent}%` : "No budget"}</span>
-        )}
+        <strong>{compact ? "Codex usage" : "Codex tokens"}</strong>
+        <Link href="/codex">{compact ? "Open" : "Codex"}</Link>
       </div>
-      <progress aria-label="API budget spent" value={cost} max={cap || 1} />
       <p>
-        ${cost.toFixed(4)} of ${cap.toFixed(2)} spent
+        {tokens.toLocaleString()} tokens · {usage.calls || 0} turns
       </p>
       {!compact && (
-        <>
-          <div className="usage-reserved">
-            <span>Reserved</span>
-            <span>${reserved.toFixed(4)}</span>
-          </div>
-          <progress
-            className="reserved-progress"
-            aria-label="API budget reserved"
-            value={reserved}
-            max={cap || 1}
-          />
-          <Link className="text-link" href="/logs">
-            See all usage <ChevronDown size={12} />
-          </Link>
-        </>
+        <small>
+          {data.codex?.account
+            ? "Billed by OpenAI; Syntra tracks tokens only"
+            : "Sign in on the Codex page"}
+        </small>
       )}
     </section>
   );
@@ -196,6 +158,9 @@ export default function WorkspaceShell(props: Props) {
     team: workingAgents,
     tasks: tasks.filter((t) =>
       ["running", "queued", "approval"].includes(t.status),
+    ).length,
+    codex: (data?.codexSessions || []).filter(
+      (s: any) => s.status === "running" || s.pending_approvals > 0,
     ).length,
     reviews,
     pitches: (data?.pitches || []).filter(

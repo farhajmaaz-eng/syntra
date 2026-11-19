@@ -49,10 +49,11 @@ export default function Overview({
   const done = tasks.filter((t) => t.status === "completed");
   const setup = [
     {
-      ok: data.keyConfigured,
-      title: `${data.provider?.label || "Model provider"} API key`,
-      description: "Add or remove your API key in Settings → Model provider.",
-      href: "/settings",
+      ok: !!data.keyConfigured,
+      title: "OpenAI Codex sign-in",
+      description:
+        "Sign in and choose the local project root on the Codex page.",
+      href: "/codex",
     },
     {
       ok: data.games.length > 0,
@@ -95,33 +96,15 @@ export default function Overview({
           <label>{failed.length} failed or blocked</label>
         </div>
         <div>
-          {data.provider?.id === "nvidia" ? (
-            <>
-              <span>NVIDIA trial usage</span>
-              <strong>
-                {(
-                  (data.spend.nimInputTokens || 0) +
-                  (data.spend.nimOutputTokens || 0)
-                ).toLocaleString()}
-                <small> tokens</small>
-              </strong>
-              <label>Free endpoints · provider limits apply</label>
-            </>
-          ) : (
-            <>
-              <span>API budget</span>
-              <strong>
-                ${data.spend.cost.toFixed(4)}
-                <small> / ${data.settings.cap.toFixed(2)}</small>
-              </strong>
-              <progress
-                aria-label="Workspace budget committed"
-                value={data.spend.cost + data.spend.reserved}
-                max={data.settings.cap || 1}
-              />
-              <label>${data.spend.reserved.toFixed(4)} reserved</label>
-            </>
-          )}
+          <span>Codex usage</span>
+          <strong>
+            {(
+              (data.codexUsage?.inputTokens || 0) +
+              (data.codexUsage?.outputTokens || 0)
+            ).toLocaleString()}
+            <small> tokens</small>
+          </strong>
+          <label>{data.codexUsage?.calls || 0} turns · OpenAI billing</label>
         </div>
       </div>
       <div className="desktop-columns">
@@ -474,8 +457,14 @@ export default function Overview({
                 </dd>
               </div>
               <div>
-                <dt>{data.provider?.label || "Model provider"}</dt>
-                <dd>{data.keyConfigured ? "configured" : "missing key"}</dd>
+                <dt>OpenAI Codex</dt>
+                <dd>
+                  {data.keyConfigured
+                    ? "signed in"
+                    : data.codex?.running
+                      ? "signed out"
+                      : "not started"}
+                </dd>
               </div>
               <div>
                 <dt>Studio</dt>

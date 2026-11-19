@@ -51,7 +51,7 @@ export default function WorkspaceReset({
       </label>
       <small>
         {scope === "connection"
-          ? "Clears MCP command/arguments and project/run instance pins. Keeps projects, tasks, history, provider keys and budgets. Reconnect and approve a replacement in Games before resuming."
+          ? "Clears MCP command/arguments and project/run instance pins. Keeps projects, tasks, history and Codex settings. Reconnect and approve a replacement in Games before resuming."
           : "Clears projects, runs, tasks, approvals, history, assets, personal references, memories, checkpoints, usage and saved API keys; restores default agents/settings. Environment files stay on disk, with API-key fallback disabled until you enter a replacement."}
       </small>
       <Button
@@ -121,8 +121,8 @@ export default function WorkspaceReset({
             </p>
             <p>
               {preview.uncertainOperations} uncertain operations. Reset does not
-              undo Studio changes, cancel provider charges, or reset your
-              provider account. The team stays paused.
+              undo Studio changes, cancel OpenAI charges, or reset your
+              OpenAI account. The team stays paused.
             </p>
             <label>
               Type {preview.phrase} to confirm

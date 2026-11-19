@@ -93,13 +93,29 @@ export function approvalGroups(data: any) {
     const run = data.runs.find((r: any) => r.id === task?.run_id);
     const game = data.games.find((g: any) => g.id === run?.game_id);
     const media = /image|asset|mesh|material/.test(approval.tool);
-    const id = `${run?.game_id || "workspace"}:${task?.agent || "Agent"}:${media ? "assets" : "studio"}:${operationRisk(approval.tool) || "ordinary"}`;
+    const codex = approval.provider === "codex";
+    const session = codex
+      ? (data.codexSessions || []).find(
+          (value: any) => value.id === approval.session_id,
+        )
+      : null;
+    const id = codex
+      ? `codex:${approval.session_id || "session"}:${operationRisk(approval.tool) || "ordinary"}`
+      : `${run?.game_id || "workspace"}:${task?.agent || "Agent"}:${media ? "assets" : "studio"}:${operationRisk(approval.tool) || "ordinary"}`;
     if (!groups.has(id))
       groups.set(id, {
         id,
-        title: media ? "Asset changes" : "Studio changes",
-        subtitle:
-          [game?.name, task?.agent].filter(Boolean).join(" · ") || "Workspace",
+        title: codex
+          ? "Codex local changes"
+          : media
+            ? "Asset changes"
+            : "Studio changes",
+        subtitle: codex
+          ? [session?.title || "Codex session", session?.cwd]
+              .filter(Boolean)
+              .join(" · ")
+          : [game?.name, task?.agent].filter(Boolean).join(" · ") ||
+            "Workspace",
         items: [],
       });
     groups.get(id)!.items.push(approval);

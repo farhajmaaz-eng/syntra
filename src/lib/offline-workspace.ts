@@ -1,28 +1,23 @@
 "use client";
 
 import { roles } from "./roles";
-import {
-  nvidiaAgentModels,
-  openRouterAgentModels,
-} from "./model-presets";
+import { codexAgentModel, codexAgentModels } from "./model-presets";
 
 const STATE_KEY = "forge-standalone-workspace-v1";
 
-function defaultAgents(providerId: "openrouter" | "nvidia" = "openrouter") {
-  const presets =
-    providerId === "nvidia" ? nvidiaAgentModels : openRouterAgentModels;
+function defaultAgents() {
   return Object.keys(roles).map((name) => ({
     name,
     model:
-      presets[name as keyof typeof presets]?.model ||
-      openRouterAgentModels.Lead.model,
+      codexAgentModels[name as keyof typeof codexAgentModels]?.model ||
+      codexAgentModel,
     temperature: 0.2,
     max_tokens: 4096,
     enabled: 1,
     prompt: roles[name as keyof typeof roles].brief,
     timeout_ms: 120000,
     context_limit: 128000,
-    spending_limit: 2.5,
+    spending_limit: 0,
     parameters: "{}",
     provider_options: "{}",
   }));
@@ -32,7 +27,7 @@ export function createStandaloneSnapshot() {
   const now = new Date().toISOString().replace("T", " ").slice(0, 19);
   return {
     standaloneMode: true,
-    agents: defaultAgents("openrouter"),
+    agents: defaultAgents(),
     tasks: [] as any[],
     runs: [] as any[],
     games: [
@@ -55,7 +50,7 @@ export function createStandaloneSnapshot() {
         agent: "System",
         level: "info",
         message:
-          "Standalone workspace ready. Add API keys, plan features, and navigate freely without Studio or a worker.",
+          "Standalone workspace ready. Plan features and navigate freely; start the worker and sign in to Codex to execute agents.",
         created: now,
       },
     ],
@@ -91,17 +86,31 @@ export function createStandaloneSnapshot() {
       resetRevision: "standalone",
       lastResetBackup: "",
     },
-    standaloneKeys: {
-      openrouter: "",
-      nvidia: "",
+    codex: {
+      available: false,
+      running: false,
+      initialized: false,
+      account: null,
+      requiresOpenaiAuth: true,
+      models: [],
+      error:
+        "Codex requires the local worker and the official @openai/codex app-server.",
+      projectRoot: "",
+      sandbox: "workspace-write",
+      defaultModel: codexAgentModel,
+      networkAccess: false,
+      autoApprove: false,
+      usage: { inputTokens: 0, outputTokens: 0, calls: 0, unpriced: 0 },
     },
+    codexSessions: [] as any[],
+    codexUsage: { inputTokens: 0, outputTokens: 0, calls: 0, unpriced: 0 },
     keyConfigured: false,
     provider: {
-      id: "openrouter" as "openrouter" | "nvidia",
-      label: "OpenRouter",
+      id: "codex",
+      label: "OpenAI Codex app-server",
       configured: false,
       keySource: "none",
-      costTracking: "usd",
+      costTracking: "token-only",
     },
   };
 }
@@ -120,10 +129,6 @@ export function loadStandaloneSnapshot() {
       settings: { ...base.settings, ...(parsed.settings || {}) },
       spend: { ...base.spend, ...(parsed.spend || {}) },
       provider: { ...base.provider, ...(parsed.provider || {}) },
-      standaloneKeys: {
-        ...base.standaloneKeys,
-        ...(parsed.standaloneKeys || {}),
-      },
     };
   } catch {
     return createStandaloneSnapshot();
@@ -153,6 +158,17 @@ export function runStandaloneAction(
   const next = structuredClone(current || loadStandaloneSnapshot());
   const now = nowStamp();
 
+  if (path.startsWith("codex/")) {
+    return {
+      snapshot: next,
+      result: {
+        ok: false,
+        message:
+          "Codex needs the local worker and the official @openai/codex app-server. Start npm run worker (or npm run local), then reload this page. No mock Codex execution runs in standalone mode.",
+      },
+    };
+  }
+
   if (path === "pause") {
     next.settings.paused = Boolean(body.paused);
     next.events.unshift({
@@ -166,83 +182,15 @@ export function runStandaloneAction(
     return { snapshot: next, result: { ok: true } };
   }
 
-  if (path === "provider/save") {
-    const providerId = body.provider === "nvidia" ? "nvidia" : "openrouter";
-    const label = providerId === "nvidia" ? "NVIDIA NIM" : "OpenRouter";
-    const keys = { ...(next.standaloneKeys || { openrouter: "", nvidia: "" }) };
-
-    if (body.removeKey) {
-      keys[providerId] = "";
-    } else if (typeof body.apiKey === "string" && body.apiKey.trim()) {
-      keys[providerId] = body.apiKey.trim();
-    }
-
-    const configured = Boolean(keys[providerId]);
-    next.standaloneKeys = keys;
-    next.keyConfigured = configured;
-    next.provider = {
-      id: providerId,
-      label,
-      configured,
-      keySource: configured ? "local" : "none",
-      costTracking: providerId === "nvidia" ? "tokens" : "usd",
-    };
-
-    if (body.applyRecommended) {
-      const presets =
-        providerId === "nvidia" ? nvidiaAgentModels : openRouterAgentModels;
-      next.agents = (next.agents || defaultAgents(providerId)).map((a: any) => ({
-        ...a,
-        model: presets[a.name as keyof typeof presets]?.model || a.model,
-      }));
-    }
-
-    if (body.removeKey && !configured) {
-      next.settings.paused = true;
-    }
-
-    next.events.unshift({
-      id: makeId("evt"),
-      agent: "User",
-      level: "info",
-      message: body.removeKey
-        ? `${label} key removed cleanly from local storage`
-        : `${label} provider saved locally`,
-      created: now,
-    });
-    saveStandaloneSnapshot(next);
-    return { snapshot: next, result: { ok: true, provider: next.provider } };
-  }
-
-  if (path === "provider/test") {
-    const active = next.provider || { id: "openrouter" };
-    const key = next.standaloneKeys?.[active.id];
-    if (!key) {
-      throw new Error(
-        "No local API key configured. Enter an API key first to save or test.",
-      );
-    }
-    const lead =
-      next.agents.find((a: any) => a.name === "Lead") || next.agents[0];
+  if (path.startsWith("provider/") || path === "models") {
     return {
       snapshot: next,
       result: {
-        ok: true,
-        model: `${lead?.model || "openrouter/auto"} (key format saved; live check runs when worker is online)`,
+        ok: false,
+        message:
+          "OpenRouter and NVIDIA provider configuration has been removed. All agents run through the OpenAI Codex app-server; open the Codex page.",
       },
     };
-  }
-
-  if (path === "models") {
-    next.events.unshift({
-      id: makeId("evt"),
-      agent: "User",
-      level: "info",
-      message: "Loaded built-in model presets (standalone mode)",
-      created: now,
-    });
-    saveStandaloneSnapshot(next);
-    return { snapshot: next, result: { ok: true } };
   }
 
   if (path === "settings") {
@@ -315,7 +263,7 @@ export function runStandaloneAction(
       agent: "System",
       level: "info",
       message:
-        "Studio bridge is optional in standalone mode — planning and API keys work without Studio.",
+        "Studio bridge is optional in standalone mode — planning works without Studio.",
       created: now,
     });
     saveStandaloneSnapshot(next);
@@ -574,9 +522,6 @@ export function runStandaloneAction(
       fresh.runs = next.runs;
       fresh.tasks = next.tasks;
       fresh.pitches = next.pitches;
-      fresh.standaloneKeys = next.standaloneKeys;
-      fresh.provider = next.provider;
-      fresh.keyConfigured = next.keyConfigured;
     }
     saveStandaloneSnapshot(fresh);
     return {

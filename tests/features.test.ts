@@ -1,40 +1,19 @@
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 const dir = mkdtempSync(resolve(tmpdir(), "forge-v2-test-"));
 process.env.FORGE_DATA_DIR = dir;
-vi.mock("../worker/model", () => ({
-  completion: vi.fn(async (_agent: any, t: any, messages: any[]) => {
-    if (
-      t.title === "Human decision" &&
-      !messages.some((m) => m.role === "tool")
-    )
-      return {
-        role: "assistant",
-        content: null,
-        tool_calls: [
-          {
-            id: "human-call",
-            type: "function",
-            function: {
-              name: "ask_human",
-              arguments: JSON.stringify({
-                question: "Which checkpoint should be the starting point?",
-                priority: 2,
-              }),
-            },
-          },
-        ],
-      };
-    return { role: "assistant", content: "User-facing deliverable" };
-  }),
-  refreshModels: vi.fn(),
-}));
+process.env.CODEX_APP_SERVER_COMMAND = process.execPath;
+process.env.CODEX_APP_SERVER_ARGS = JSON.stringify([
+  resolve("tests/codex-fixture.mjs"),
+]);
+const calls = (value: any[]) =>
+  `FIXTURE_CALLS_B64:${Buffer.from(JSON.stringify(value)).toString("base64")}`;
 const store = await import("../worker/store");
 const features = await import("../worker/features");
 const runtime = await import("../worker/runtime");
-const { completion } = await import("../worker/model");
+const { codex } = await import("../worker/codex");
 const { migrateFeatures } = await import("../worker/migrations");
 const { db } = store;
 function g(id = "game", studio = "test-studio") {
@@ -56,11 +35,27 @@ function request(agent = "Builder", extra: Record<string, unknown> = {}) {
 async function settle() {
   while (runtime.active.size) await new Promise((r) => setTimeout(r, 5));
 }
+beforeAll(async () => {
+  store.set("codexProjectRoot", dir);
+  store.set("codexAutoApprove", true);
+  await codex.ensureStarted();
+  await codex.loginApiKey("sk-fixture-codex-key-1234567890");
+});
+async function waitFor(fn: () => boolean, timeout = 5000) {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    if (fn()) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error("Timed out");
+}
 beforeEach(async () => {
   await settle();
   runtime.active.clear();
-  vi.mocked(completion).mockClear();
   for (const table of [
+    "codex_events",
+    "codex_turns",
+    "codex_sessions",
     "review_events",
     "assets",
     "pitch_versions",
@@ -84,6 +79,7 @@ beforeEach(async () => {
 });
 afterAll(async () => {
   await settle();
+  codex.shutdown();
   db.close();
   rmSync(dir, { recursive: true, force: true });
 });
@@ -136,7 +132,7 @@ describe("Additive V2 persistence and execution", () => {
     );
     await runtime.tick();
     await settle();
-    expect(completion).not.toHaveBeenCalled();
+    expect(store.task(child).status).toBe("queued");
     features.featureAction("plans/approve", {
       id: r.id,
       adjustments: [
@@ -149,7 +145,6 @@ describe("Additive V2 persistence and execution", () => {
     });
     await runtime.tick();
     await settle();
-    expect(completion).toHaveBeenCalledOnce();
     expect(store.task(child)).toMatchObject({
       status: "completed",
       instructions: "Revised measurable scope",
@@ -196,23 +191,27 @@ describe("Additive V2 persistence and execution", () => {
   });
   it("waits for human decisions and resumes with the real answer", async () => {
     const r = request();
-    db.prepare("UPDATE tasks SET title='Human decision' WHERE id=?").run(
+    db.prepare("UPDATE tasks SET title='Human decision',instructions=? WHERE id=?").run(
+      `${calls([
+        {
+          tool: "ask_human",
+          arguments: {
+            question: "Which checkpoint should be the starting point?",
+            priority: 2,
+          },
+        },
+      ])} Decide which checkpoint to use.`,
       r.taskId,
     );
     await runtime.tick();
-    await settle();
-    expect(store.task(r.taskId).status).toBe("blocked");
+    await waitFor(() => store.task(r.taskId).status === "blocked");
     const q: any = db.prepare("SELECT * FROM attention_requests").get();
     expect(q.question).toContain("checkpoint");
     features.featureAction("attention/reply", {
       id: q.id,
       reply: "Use the spawn checkpoint",
     });
-    await runtime.tick();
-    await settle();
-    await runtime.tick();
-    await settle();
-    expect(store.task(r.taskId).status).toBe("completed");
+    await waitFor(() => store.task(r.taskId).status === "completed");
     expect(
       features
         .taskDetail(r.taskId)

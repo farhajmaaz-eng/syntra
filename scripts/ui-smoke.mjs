@@ -11,6 +11,7 @@ try {
       "/chat",
       "/team",
       "/tasks",
+      "/codex",
       "/games",
       "/reviews",
       "/library",
@@ -28,7 +29,7 @@ try {
       )
         throw new Error(`Horizontal overflow: ${route} at ${width}`);
     }
-    console.log(`PASS all nine pages at ${width}px`);
+    console.log(`PASS all dashboard pages at ${width}px`);
   }
   await p.setViewportSize({ width: 1440, height: 1100 });
   await p.goto("http://127.0.0.1:3000");

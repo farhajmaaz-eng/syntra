@@ -11,7 +11,7 @@ import {
 import { resolve } from "node:path";
 import { z } from "zod";
 import { db, get, set, defaults, dataDir, event } from "./store";
-import { saveProvider, defaultAgentModel } from "./provider";
+import { codexAgentModels } from "../src/lib/model-presets";
 import { roles } from "../src/lib/roles";
 import { resetLibrary } from "./library";
 import { requireIdle, invalidateStudioIntents } from "./studio-selection";
@@ -68,12 +68,8 @@ function fingerprint() {
       "SELECT * FROM settings WHERE key NOT IN ('workerHeartbeat','studioDiscovery','studioKnownInstances','studioDiscoveryError','studioStatus','studioTools','studioError','pricing','pricingUpdated','modelCatalog') ORDER BY key",
     )
     .all();
-  const keyPath = resolve(dataDir, "provider-credentials.json");
-  const credentials = existsSync(keyPath)
-    ? createHash("sha256").update(readFileSync(keyPath)).digest("hex")
-    : "";
   return createHash("sha256")
-    .update(JSON.stringify({ data, config, credentials }))
+    .update(JSON.stringify({ data, config }))
     .digest("hex");
 }
 export function previewWorkspaceReset(body: unknown, active: Set<string>) {
@@ -213,8 +209,6 @@ export async function confirmWorkspaceReset(
   } else {
     // Backups are complete before any destructive change. A failed step leaves
     // the runtime paused with the backup location available for recovery.
-    saveProvider({ provider: "nvidia", removeKey: true });
-    saveProvider({ provider: "openrouter", removeKey: true });
     hooks.clearCheckpoints();
     db.transaction(() => {
       // Break self references, then delete in foreign-key dependency order.
@@ -251,11 +245,12 @@ export async function confirmWorkspaceReset(
       set("mcpArgs", []);
       set("paused", true);
       set("workerPort", Number(process.env.WORKER_PORT || 4318));
-      set("openRouterMigrationV2", true);
+      set("codexOnlyMigrationV1", true);
       for (const [name, role] of Object.entries(roles))
         db.prepare("INSERT INTO agents(name,model,prompt) VALUES (?,?,?)").run(
           name,
-          defaultAgentModel(name),
+          codexAgentModels[name as keyof typeof codexAgentModels]?.model ||
+            codexAgentModels.Lead.model,
           role.brief,
         );
       set("lastResetBackup", `backups/${id}`);

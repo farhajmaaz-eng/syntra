@@ -43,14 +43,14 @@ try {
   const download = await downloadPromise;
   const report = JSON.parse(await readFile(await download.path(), "utf8"));
   if (
-    report.app !== "Forge Studio" ||
+    report.app !== "Syntra Studio" ||
     "chat" in report ||
     "settings" in report ||
     "memories" in report ||
     "content" in report
   )
     throw new Error("Invalid diagnostics export");
-  if (!("keyConfigured" in report.provider) || !("cap" in report.budget))
+  if (!("signedIn" in report.codex) || !("sessions" in report.codex))
     throw new Error("Missing diagnostic metadata");
   console.log(
     "PASS persisted appearance, density, focus mode, workspace keys, shortcuts and diagnostic export",

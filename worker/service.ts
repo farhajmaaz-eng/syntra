@@ -17,14 +17,17 @@ import {
   backupCheckpoints,
   clearCheckpoints,
 } from "./runtime";
-import { parseOptions, routingSchema, parametersSchema } from "./model-config";
 import { redact, publicData } from "./errors";
-import { refreshModels } from "./model";
 import { roles } from "../src/lib/roles";
-import { librarySearch, libraryRead, libraryAction } from "./library";
-import { providerAction, providerOperationActive } from "./provider-actions";
-import { providerStatus } from "./provider";
-import { nvidiaFreeModelIds } from "../src/lib/model-presets";
+import {
+  librarySearch,
+  libraryRead,
+  libraryAction,
+  libraryBrief,
+  libraryStats,
+} from "./library";
+import { codexAction, codexRead } from "./codex-actions";
+import { codex, codexSessions, codexUsage } from "./codex";
 import {
   featureAction,
   featureRead,
@@ -41,8 +44,7 @@ export {
   abortAll,
   redact,
   publicData,
-  providerOperationActive,
-  refreshModels,
+  codex,
 };
 
 let connecting = false;
@@ -77,8 +79,8 @@ export async function action(path: string, b: any) {
     path.startsWith("studio/switch/") ||
     path.startsWith("workspace/reset/")
   ) {
-    if (connecting || studio.isConnecting || providerOperationActive())
-      throw new Error("Wait for connection/provider operations to finish");
+    if (connecting || studio.isConnecting || codex.busy())
+      throw new Error("Wait for Codex or Studio operations to finish");
     maintaining = true;
     try {
       if (path === "studio/switch/preview")
@@ -99,8 +101,8 @@ export async function action(path: string, b: any) {
     }
   }
   if (path.startsWith("library/")) return libraryAction(path.slice(8), b);
-  const providerResult = await providerAction(path, b, active);
-  if (providerResult !== undefined) return providerResult;
+  const codexResult = await codexAction(path, b, active);
+  if (codexResult !== undefined) return codexResult;
   const featureResult = featureAction(path, b, active);
   if (featureResult !== undefined) {
     interruptStopped();
@@ -109,7 +111,7 @@ export async function action(path: string, b: any) {
   if (path === "settings") {
     const a = z
       .object({
-        cap: z.number().min(0).max(1000),
+        cap: z.number().min(0).max(1000).optional(),
         concurrency: z.number().int().min(1).max(3).optional(),
         taskTimeoutMs: z.number().int().min(1000).max(3600000).optional(),
         paused: z.boolean(),
@@ -119,11 +121,12 @@ export async function action(path: string, b: any) {
         maxSteps: z.number().int().min(5).max(100),
       })
       .parse(b);
-    if (active.size || providerOperationActive())
+    if (active.size || codex.busy())
       throw new Error(
         "Pause the runtime and wait for active tasks before changing settings.",
       );
-    for (const [k, v] of Object.entries(a)) set(k, v);
+    for (const [k, v] of Object.entries(a))
+      if (v !== undefined) set(k, v);
     event("Settings saved");
     return { ok: true };
   }
@@ -148,52 +151,30 @@ export async function action(path: string, b: any) {
         prompt: z.string().min(10).max(20000),
       })
       .parse(b);
-    const targetProvider = providerStatus().id;
-    if (targetProvider === "nvidia" && !nvidiaFreeModelIds.includes(a.model))
-      throw new Error("Choose a model from the NVIDIA free-endpoint allowlist");
-    if ([...active].some((id) => task(id).agent === a.name))
-      throw new Error("Agent is active; pause before editing.");
-    const routing = parseOptions(a.provider_options, routingSchema),
-      parameters = parseOptions(a.parameters, parametersSchema);
+    if (a.name === "Codex" && a.model.length > 200)
+      throw new Error("Codex model ID is too long");
+    const codexModels = codex
+      .status()
+      .models?.map((model: any) => model.id)
+      .filter(Boolean) as string[];
+    if (codexModels?.length && !codexModels.includes(a.model))
+      throw new Error(
+        "Choose a model from the current Codex app-server catalog, or refresh models on the Codex page.",
+      );
     if (a.max_tokens >= a.context_limit)
       throw new Error(
         "Output-token limit must be smaller than the configured context limit",
       );
-    if (targetProvider === "openrouter") {
-      let pricing = get<any>("pricing") || {};
-      if (!pricing[a.model]) {
-        await refreshModels();
-        pricing = get<any>("pricing");
-      }
-      if (!pricing[a.model])
-        throw new Error("Model ID is not in the OpenRouter catalog");
-      if (!pricing[a.model].parameters?.includes("tools"))
-        throw new Error("Choose a model that advertises tool calling");
-      if (a.max_tokens > (pricing[a.model].maxOutput || Infinity))
-        throw new Error("Output-token limit exceeds the model maximum");
-    }
     if (
-      providerStatus().id !== targetProvider ||
-      [...active].some((id) => task(id)?.agent === a.name)
+      [...active].some((id) => task(id)?.agent === a.name) ||
+      codex.busy()
     )
       throw new Error(
-        "Provider or agent activity changed while checking the model. Pause the team and save again.",
+        "Agent activity changed while checking the model. Pause the team and save again.",
       );
     db.prepare(
-      "UPDATE agents SET model=?,temperature=?,max_tokens=?,enabled=?,prompt=?,timeout_ms=?,context_limit=?,spending_limit=?,provider_options=?,parameters=? WHERE name=?",
-    ).run(
-      a.model,
-      a.temperature,
-      a.max_tokens,
-      Number(a.enabled),
-      a.prompt,
-      a.timeout_ms,
-      a.context_limit,
-      a.spending_limit,
-      JSON.stringify(routing),
-      JSON.stringify(parameters),
-      a.name,
-    );
+      "UPDATE agents SET model=?,enabled=?,prompt=? WHERE name=?",
+    ).run(a.model, Number(a.enabled), a.prompt, a.name);
     return { ok: true };
   }
   if (path === "connect") {
@@ -204,7 +185,9 @@ export async function action(path: string, b: any) {
     return await studio.discover();
   }
   if (path === "models") {
-    return { ok: true, ...(await refreshModels()) };
+    await codex.ensureStarted();
+    const models = await codex.refreshModels();
+    return { ok: true, count: models.length, models };
   }
   if (path === "games") {
     const a = z
@@ -308,31 +291,71 @@ export function handleWorkerGet(
     const file = assetFile(searchParams.get("id") || "");
     return { kind: "binary", ...file };
   }
+  const codexResult = codexRead(path, searchParams);
+  if (codexResult !== undefined) {
+    return { kind: "json", data: publicData(codexResult) };
+  }
   const result = featureRead(path, searchParams);
   if (result !== undefined) {
     return { kind: "json", data: publicData(result) };
   }
   if (path === "library") {
+    const id = searchParams.get("id");
+    const sectionId = searchParams.get("section") || undefined;
+    if (searchParams.get("stats") === "true") {
+      return { kind: "json", data: libraryStats() };
+    }
+    if (searchParams.has("brief")) {
+      return {
+        kind: "json",
+        data: libraryBrief(
+          searchParams.get("brief") || "",
+          searchParams.get("agent") || "",
+          Number(searchParams.get("limit")) || 6,
+        ),
+      };
+    }
     return {
       kind: "json",
-      data: searchParams.has("id")
-        ? libraryRead(searchParams.get("id")!)
+      data: id
+        ? libraryRead(id, { sectionId })
         : librarySearch(
             searchParams.get("q") || "",
             searchParams.get("category") || "",
             searchParams.get("starred") === "true",
+            {
+              agent: searchParams.get("agent") || undefined,
+              kind: searchParams.get("kind") || undefined,
+              limit: Number(searchParams.get("limit")) || undefined,
+            },
           ),
     };
   }
   if (path === "snapshot") {
     return {
       kind: "json",
-      data: {
-        ...snapshot(),
-        uncertain: db
-          .prepare("SELECT * FROM tool_calls WHERE status='uncertain'")
-          .all(),
-      },
+      data: (() => {
+        const codexStatus = codex.status();
+        const codexReady =
+          !!codexStatus.account || !!codexStatus.environmentKey;
+        return {
+          ...snapshot(),
+          codex: codexStatus,
+          keyConfigured: codexReady,
+          provider: {
+            id: "codex",
+            label: "OpenAI Codex app-server",
+            configured: codexReady,
+            keySource: codexReady ? "codex" : "none",
+            costTracking: "token-only",
+          },
+          codexSessions: codexSessions(),
+          codexUsage: codexUsage(),
+          uncertain: db
+            .prepare("SELECT * FROM tool_calls WHERE status='uncertain'")
+            .all(),
+        };
+      })(),
     };
   }
   return { kind: "not_found" };
@@ -357,7 +380,6 @@ export function ensureEmbeddedWorkerStarted() {
   set("workerPort", Number(process.env.WORKER_PORT || 4318));
   recover();
   void studio.connect();
-  void refreshModels().catch((e) => event(String(e), "System", "error"));
   state.timer = setInterval(() => {
     interruptStopped();
     if (!studio.client && !connecting && !maintaining) {
@@ -367,7 +389,7 @@ export function ensureEmbeddedWorkerStarted() {
       !state.ticking &&
       !connecting &&
       !maintaining &&
-      !providerOperationActive()
+      !codex.busy()
     ) {
       state.ticking = true;
       void tick()

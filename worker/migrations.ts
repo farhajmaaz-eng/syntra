@@ -34,11 +34,14 @@ export function migrateFeatures(db: Database.Database) {
         studio_id: "TEXT NOT NULL DEFAULT ''",
         pin_revision: "INTEGER NOT NULL DEFAULT 0",
       },
-      usage: { provider: "TEXT NOT NULL DEFAULT 'openrouter'" },
+      usage: { provider: "TEXT NOT NULL DEFAULT 'codex'" },
       approvals: {
         note: "TEXT NOT NULL DEFAULT ''",
         reviewer: "TEXT",
         decided_at: "TEXT",
+        provider: "TEXT NOT NULL DEFAULT 'studio'",
+        session_id: "TEXT",
+        rpc_request_id: "TEXT",
       },
     };
     for (const [table, fields] of Object.entries(columns)) {
@@ -64,7 +67,13 @@ export function migrateFeatures(db: Database.Database) {
       CREATE TABLE IF NOT EXISTS telemetry_snapshots(id TEXT PRIMARY KEY,game_id TEXT NOT NULL REFERENCES games(id),source TEXT NOT NULL,fetched_at TEXT NOT NULL,quality TEXT NOT NULL,payload TEXT NOT NULL,UNIQUE(game_id,source,fetched_at));
       CREATE TABLE IF NOT EXISTS pitches(id TEXT PRIMARY KEY,game_id TEXT REFERENCES games(id),title TEXT NOT NULL,hook TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'draft',version INTEGER NOT NULL DEFAULT 1,payload TEXT NOT NULL,created TEXT DEFAULT CURRENT_TIMESTAMP,updated TEXT DEFAULT CURRENT_TIMESTAMP);
       CREATE TABLE IF NOT EXISTS pitch_versions(pitch_id TEXT NOT NULL REFERENCES pitches(id),version INTEGER NOT NULL,payload TEXT NOT NULL,created TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(pitch_id,version));
+      CREATE TABLE IF NOT EXISTS codex_sessions(id TEXT PRIMARY KEY,thread_id TEXT UNIQUE,title TEXT NOT NULL,cwd TEXT NOT NULL,model TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'idle',task_id TEXT,archived INTEGER NOT NULL DEFAULT 0,created TEXT DEFAULT CURRENT_TIMESTAMP,updated TEXT DEFAULT CURRENT_TIMESTAMP);
+      CREATE TABLE IF NOT EXISTS codex_turns(id TEXT PRIMARY KEY,session_id TEXT NOT NULL REFERENCES codex_sessions(id),task_id TEXT,prompt TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'running',result TEXT NOT NULL DEFAULT '',diff TEXT NOT NULL DEFAULT '',error TEXT,usage TEXT NOT NULL DEFAULT '{}',review_status TEXT NOT NULL DEFAULT 'unreviewed',review_note TEXT NOT NULL DEFAULT '',reviewed_at TEXT,created TEXT DEFAULT CURRENT_TIMESTAMP,updated TEXT DEFAULT CURRENT_TIMESTAMP);
+      CREATE TABLE IF NOT EXISTS codex_events(id INTEGER PRIMARY KEY AUTOINCREMENT,session_id TEXT NOT NULL REFERENCES codex_sessions(id),turn_id TEXT,type TEXT NOT NULL,payload TEXT NOT NULL,created TEXT DEFAULT CURRENT_TIMESTAMP);
       CREATE INDEX IF NOT EXISTS assets_task ON assets(task_id);
+      CREATE INDEX IF NOT EXISTS codex_sessions_task ON codex_sessions(task_id);
+      CREATE INDEX IF NOT EXISTS codex_turns_session ON codex_turns(session_id,created);
+      CREATE INDEX IF NOT EXISTS codex_events_session ON codex_events(session_id,id);
       CREATE INDEX IF NOT EXISTS agent_messages_task ON agent_messages(task_id,created);
       CREATE INDEX IF NOT EXISTS reviews_target ON review_events(target_kind,target_id);
       CREATE INDEX IF NOT EXISTS telemetry_game ON telemetry_snapshots(game_id,fetched_at);

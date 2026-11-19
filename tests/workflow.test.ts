@@ -1,120 +1,100 @@
-import { describe, it, expect, vi, afterAll } from "vitest";
+import { describe, it, expect, afterAll, beforeAll } from "vitest";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+const calls = (value: any[]) =>
+  `FIXTURE_CALLS_B64:${Buffer.from(JSON.stringify(value)).toString("base64")}`;
 const tmp = mkdtempSync(resolve(tmpdir(), "forge-test-"));
 process.env.FORGE_DATA_DIR = tmp;
+process.env.CODEX_APP_SERVER_COMMAND = process.execPath;
+process.env.CODEX_APP_SERVER_ARGS = JSON.stringify([
+  resolve("tests/codex-fixture.mjs"),
+]);
 process.env.FIXTURE_PLACE = resolve(tmp, "place.luau");
-let serial = 0;
-const call = (name: string, args: any) => ({
-  role: "assistant",
-  content: null,
-  tool_calls: [
-    {
-      id: `call-${++serial}`,
-      type: "function",
-      function: { name, arguments: JSON.stringify(args) },
-    },
-  ],
-});
-vi.mock("../worker/model", () => ({
-  completion: vi.fn(async (a: any, t: any, m: any[]) => {
-    const outputs = m.filter((x) => x.role === "tool");
-    if (a.name === "Lead") {
-      if (!outputs.length) return call("library_search", { query: "security" });
-      if (outputs.length === 1)
-        return call("library_read", {
-          id: JSON.parse(outputs[0].content)[0].id,
-        });
-
-      if (outputs.length === 2)
-        return call("delegate", {
-          agent: "Builder",
-          title: "Build checkpoint",
-          instructions: "Create Checkpoint script",
-          dependencies: [],
-        });
-      return {
-        role: "assistant",
-        content: "Builder delegated; independent verification follows.",
-      };
-    }
-    if (a.name === "Builder") {
-      if (!outputs.length) return call("script_read", {});
-      if (outputs.length === 1)
-        return call("multi_edit", {
-          source: '-- Checkpoint\nprint("Checkpoint ready")',
-        });
-      if (outputs.length === 2) return call("script_read", {});
-      return {
-        role: "assistant",
-        content:
-          "Created checkpoint script in Studio and read back the result.",
-      };
-    }
-    if (a.name === "Tester") {
-      if (outputs.length === 0) return call("script_read", {});
-      if (outputs.length === 1) return call("start_stop_play", { start: true });
-      if (outputs.length === 2) return call("get_console_output", {});
-      if (outputs.length === 3)
-        return call("start_stop_play", { start: false });
-      if (outputs.length === 4)
-        return call("verify", {
-          passed: true,
-          evidence:
-            "Read back Checkpoint script, started playtest, observed PASS Checkpoint exists in console, stopped playtest.",
-        });
-      return {
-        role: "assistant",
-        content: "Checkpoint verified with Studio evidence.",
-      };
-    }
-    throw new Error("Unexpected role");
-  }),
-  refreshModels: vi.fn(),
-}));
 const store = await import("../worker/store");
+const features = await import("../worker/features");
 const { studio } = await import("../worker/mcp");
 const runtime = await import("../worker/runtime");
+const { codex } = await import("../worker/codex");
 afterAll(async () => {
   await studio.close();
+  codex.shutdown();
   store.db.close();
   rmSync(tmp, { recursive: true, force: true });
 });
-describe("Persistent local workflow", () => {
-  it("plans, delegates, gates a real SDK write, verifies evidence and reaches review", async () => {
+describe("Persistent Codex workflow", () => {
+  beforeAll(async () => {
+    store.set("codexProjectRoot", process.cwd());
+    store.set("codexAutoApprove", false);
     store.set("mcpCommand", process.execPath);
     store.set("mcpArgs", [
       resolve("tests/studio-fixture.mjs"),
       process.env.FIXTURE_PLACE,
     ]);
     await studio.connect();
+    await codex.ensureStarted();
+    await codex.loginApiKey("sk-fixture-codex-key-1234567890");
     expect(studio.tools.length).toBe(5);
+  }, 30000);
+
+  it("plans, delegates, gates a real SDK write, verifies evidence and reaches review", async () => {
     store.db
       .prepare(
         "INSERT INTO runs(id,request,studio_id) VALUES ('run','Build a checkpoint','test-studio')",
       )
       .run();
-    store.addTask("run", "Lead", "Plan checkpoint", "Plan, delegate, test.");
+    const lead = store.addTask(
+      "run",
+      "Lead",
+      "Plan checkpoint",
+      "Plan, delegate, test.",
+    );
+    const builderInstructions = `${calls([
+      { tool: "script_read", arguments: {} },
+      {
+        tool: "multi_edit",
+        arguments: { source: '-- Checkpoint\\nprint("Checkpoint ready")' },
+      },
+      { tool: "script_read", arguments: {} },
+    ])} Create Checkpoint script`;
+    store.db
+      .prepare("UPDATE tasks SET instructions=? WHERE id=?")
+      .run(
+        `${calls([
+          { tool: "library_search", arguments: { query: "security" } },
+          {
+            tool: "delegate",
+            arguments: {
+              agent: "Builder",
+              title: "Build checkpoint",
+              instructions: builderInstructions,
+              dependencies: [],
+              acceptance: "Checkpoint script exists in Studio",
+            },
+          },
+        ])} Plan, delegate, test.`,
+        lead,
+      );
     let approvals = 0;
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 120; i++) {
       await runtime.tick();
-      while (runtime.active.size) await new Promise((r) => setTimeout(r, 5));
-      const pending = store.db
-        .prepare("SELECT * FROM approvals WHERE status='pending'")
-        .all() as any[];
-      for (const ap of pending) {
-        expect(ap.args).toContain("test-studio");
-        if (ap.tool === "multi_edit") {
-          expect(() => readFileSync(process.env.FIXTURE_PLACE!)).toThrow();
+      for (let wait = 0; wait < 60; wait++) {
+        const pending = store.db
+          .prepare("SELECT * FROM approvals WHERE status='pending'")
+          .all() as any[];
+        for (const ap of pending) {
+          expect(ap.args).toContain("test-studio");
+          if (ap.tool === "multi_edit")
+            expect(() => readFileSync(process.env.FIXTURE_PLACE!)).toThrow();
+          features.decideApproval({
+            id: ap.id,
+            approved: true,
+            note: "Approved by workflow test",
+          });
+          approvals++;
         }
-        store.db
-          .prepare("UPDATE approvals SET status='approved' WHERE id=?")
-          .run(ap.id);
-        store.db
-          .prepare("UPDATE tasks SET status='queued' WHERE id=?")
-          .run(ap.task_id);
-        approvals++;
+        if (!runtime.active.size) break;
+        await new Promise((r) => setTimeout(r, 25));
       }
       if (
         (
@@ -129,7 +109,7 @@ describe("Persistent local workflow", () => {
       (
         store.db
           .prepare(
-            "SELECT count(*) AS n FROM tool_calls WHERE tool='library_read' AND status='done'",
+            "SELECT count(*) AS n FROM tool_calls WHERE tool='library_search' AND status='done'",
           )
           .get() as any
       ).n,
@@ -159,25 +139,17 @@ describe("Persistent local workflow", () => {
     expect(
       (store.db.prepare("SELECT count(*) AS n FROM locks").get() as any).n,
     ).toBe(0);
-  }, 20000);
-  it("keeps provider catalogs and full conversations out of live dashboard snapshots", () => {
-    store.set("pricing", { "test/model": { prompt: 0.01, completion: 0.02 } });
+  }, 30000);
+
+  it("keeps full conversations out of live dashboard snapshots", () => {
     const snapshot = store.snapshot();
     expect(snapshot.settings).not.toHaveProperty("pricing");
-    expect(store.get<any>("pricing")["test/model"].completion).toBe(0.02);
     expect(snapshot.tasks.length).toBeGreaterThan(0);
     expect(snapshot.tasks[0]).not.toHaveProperty("messages");
     const persisted = store.task((snapshot.tasks[0] as any).id);
     expect(persisted.messages).toBeDefined();
   });
-  it("reserves atomically against cap and includes unknown outcomes", () => {
-    store.set("cap", 1);
-    store.reserve("t", "Lead", "m", 0.7);
-    expect(() => store.reserve("t", "Builder", "m", 0.4)).toThrow(
-      "Spending cap",
-    );
-    expect(store.spent().reserved).toBe(0.7);
-  });
+
   it("rejects unauthorized MCP tools before running them", async () => {
     await expect(
       studio.call(
@@ -190,6 +162,7 @@ describe("Persistent local workflow", () => {
     ).rejects.toThrow("cannot use");
     expect(readFileSync(process.env.FIXTURE_PLACE!, "utf8")).not.toBe("bad");
   });
+
   it("restores queued work and flags interrupted writes after restart", () => {
     const id = store.addTask(
       "run",

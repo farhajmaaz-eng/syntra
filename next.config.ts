@@ -4,8 +4,8 @@ const config: NextConfig = {
   poweredByHeader: false,
   serverExternalPackages: [
     "better-sqlite3",
-    "@langchain/langgraph-checkpoint-sqlite",
     "@modelcontextprotocol/sdk",
+    "@openai/codex",
     "ws",
   ],
 };

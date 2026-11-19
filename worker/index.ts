@@ -4,6 +4,7 @@ import http from "node:http";
 import { WebSocketServer } from "ws";
 import { db, set, event, secret } from "./store";
 import { studio } from "./mcp";
+import { codex } from "./codex";
 import {
   active,
   recover,
@@ -12,8 +13,6 @@ import {
   abortAll,
   redact,
   publicData,
-  providerOperationActive,
-  refreshModels,
   isConnecting,
   isMaintaining,
   action,
@@ -99,7 +98,6 @@ server.listen(port, "127.0.0.1", () => {
   );
   recover();
   void studio.connect();
-  void refreshModels().catch((e) => event(String(e), "System", "error"));
 });
 let ticking = false;
 const timer = setInterval(() => {
@@ -112,7 +110,7 @@ const timer = setInterval(() => {
     !ticking &&
     !isConnecting() &&
     !isMaintaining() &&
-    !providerOperationActive()
+    !codex.busy()
   ) {
     ticking = true;
     void tick()
@@ -129,6 +127,7 @@ async function shutdown() {
   abortAll();
   while (active.size) await new Promise((r) => setTimeout(r, 200));
   await studio.close();
+  codex.shutdown();
   wss.close();
   server.close();
   db.close();

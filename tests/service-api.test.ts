@@ -67,38 +67,30 @@ describe("worker service and feature safety helpers", () => {
     await expect(safeResponseJson(emptyRes)).resolves.toEqual({});
   });
 
-  it("supports adding/removing API keys and planning without a worker or Studio", async () => {
+  it("supports planning without a worker or Studio while Codex stays worker-only", async () => {
     const { createStandaloneSnapshot, runStandaloneAction } = await import(
       "../src/lib/offline-workspace"
     );
     const initial = createStandaloneSnapshot();
     expect(initial.games.length).toBeGreaterThan(0);
-    expect(initial.keyConfigured).toBe(false);
+    expect(initial.codex.available).toBe(false);
+    expect(initial.provider.id).toBe("codex");
 
-    const saved = runStandaloneAction(initial, "provider/save", {
-      provider: "openrouter",
-      apiKey: "sk-or-test-key-1234",
-      applyRecommended: true,
-    });
-    expect(saved.snapshot.keyConfigured).toBe(true);
-    expect(saved.snapshot.provider.id).toBe("openrouter");
-    expect(saved.snapshot.standaloneKeys.openrouter).toBe("sk-or-test-key-1234");
+    const unavailable = runStandaloneAction(initial, "codex/status", {});
+    expect(unavailable.result.ok).toBe(false);
+    expect(unavailable.result.message).toContain("local worker");
 
-    const queued = runStandaloneAction(saved.snapshot, "chat", {
+    const queued = runStandaloneAction(initial, "chat", {
       content: "Plan an obby checkpoint module",
       gameId: initial.games[0].id,
     });
     expect(queued.snapshot.tasks).toHaveLength(1);
     expect(queued.snapshot.tasks[0].status).toBe("queued");
+    expect(queued.snapshot.agents.map((a: any) => a.model)).toEqual(
+      expect.arrayContaining(["gpt-6.2-sol", "gpt-6.1-terra"]),
+    );
 
-    const removed = runStandaloneAction(queued.snapshot, "provider/save", {
-      provider: "openrouter",
-      removeKey: true,
-    });
-    expect(removed.snapshot.keyConfigured).toBe(false);
-    expect(removed.snapshot.standaloneKeys.openrouter).toBe("");
-
-    const connected = runStandaloneAction(removed.snapshot, "connect", {});
+    const connected = runStandaloneAction(queued.snapshot, "connect", {});
     expect(connected.result.ok).toBe(true);
 
     const followUp = runStandaloneAction(connected.snapshot, "agents/message", {

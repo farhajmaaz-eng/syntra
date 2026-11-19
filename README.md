@@ -1,67 +1,104 @@
-# Forge Studio
+# Syntra Studio
 
-A local-first Roblox AI development studio built with Next.js, TypeScript, Tailwind CSS, shadcn/ui-compatible Radix button components, SQLite, LangGraph.js, and the official MCP TypeScript SDK. Compact dark workspace with a project toolbar, agent navigation, grouped reviews, and responsive layouts based on the supplied design reference. See [design decisions](docs/DESIGN.md).
+Syntra Studio is a local-first Roblox development workspace built around **OpenAI Codex**. A main Codex orchestrator receives your request, sets up seven Codex subagents, and coordinates their dependency-ordered work. The subagents use the same official Codex app-server with local project access and Syntra’s dynamic tools for Roblox Studio, approvals, library references, delegation and verification.
 
-![Forge desktop workspace with task queue and agent status](artifacts/overview-desktop.png)
+The dashboard is Next.js 16 + TypeScript + Tailwind + shadcn/ui-compatible Radix components, backed by a localhost worker, SQLite and the official Roblox Studio MCP server. See [design notes](docs/DESIGN.md) and the [Codex integration guide](docs/CODEX_INTEGRATION.md).
 
-## Start here
+![Syntra workspace](artifacts/overview-desktop.png)
 
-Requires Node.js 22+, npm, an OpenRouter API key with access to a tool-capable model, and current Roblox Studio **on the same Windows/macOS machine as the worker**. Roblox Studio is not available natively on this Linux build machine.
+## Requirements
+
+- Node.js 22+ and npm.
+- An OpenAI Codex account or API key accepted by the installed Codex app-server. ChatGPT sign-in availability and plan restrictions are controlled by OpenAI.
+- Roblox Studio on the same Windows/macOS machine as the worker for live place edits. The official Studio MCP server is supplied by Roblox; no third-party Roblox plugin is required.
+- This Linux build machine can run the worker and tests, but it does not run Roblox Studio or real paid Codex inference.
+
+## Start
 
 ```bash
 cd /root/forge-studio
 npm ci
 cp .env.example .env
-# Set OPENROUTER_API_KEY and configure Studio's official MCP command in .env.
-npm run worker
+# Optional: set CODEX_PROJECT_ROOT to limit local file access.
+npm run local
 ```
 
-In another terminal:
+`npm run local` starts a real external worker plus Next and sets `WORKER_EXTERNAL=1` so the dashboard proxies to it. Open **http://127.0.0.1:3000**.
 
-```bash
-npm run dev
-```
+Other launch options:
 
-Open **http://127.0.0.1:3000**. For a convenient combined development launcher use `npm run local`. For production use `npm run build`, then `npm run start` alongside `npm run worker`. The worker is independent of the dashboard and browser: closing either does not stop agents. Keep the worker terminal open, or run it under your OS service manager (systemd, launchd, or a Windows service).
+- `npm run dev` starts Next with its **embedded worker**. This is convenient for UI work; closing the Next process stops the worker.
+- `npm run worker` starts the worker alone. Use this under systemd, launchd, a Windows service, or a separate terminal, then run the dashboard with `WORKER_EXTERNAL=1 npm run dev` or `WORKER_EXTERNAL=1 npm run start`.
+- `npm run build` then `npm run start` for production. Keep the worker running independently if you use `npm run worker`.
 
-To copy this project to a Studio computer, copy the directory excluding `node_modules`, `.next`, `.data`, and `.env`, then run `npm ci` and configure a new `.env`. Never copy a Linux `node_modules` folder to Windows/macOS: SQLite uses native binaries.
+Runtime data lives in `FORGE_DATA_DIR` (default `.data`): `forge.sqlite`, `worker.secret`, assets and the isolated `codex-home/` credential directory. Never commit `.data`. Back it up with processes stopped. Do not copy Linux `node_modules` to Windows/macOS; SQLite uses native binaries.
 
-## Connect real Roblox Studio
+## First run
 
-1. Open a place in Roblox Studio. Assistant → **… → Manage MCP Servers** → **Enable Studio as MCP server**.
-2. Copy the official command and arguments into Settings, save, then click **Connect / reconnect**. The worker dynamically discovers actual tool schemas; no third-party Roblox plugin is required.
-3. On macOS the official executable is `/Applications/RobloxStudio.app/Contents/MacOS/StudioMCP` with arguments `[]`.
-4. On Windows use executable `cmd.exe` and arguments `["/c","cd /d %LOCALAPPDATA%\\Roblox && .\\mcp.bat"]`. The worker expands `%LOCALAPPDATA%` and other environment variables before startup; paths with spaces remain inside the original argument.
-5. Games → **Discover Studios**. Copy the returned `studio_id`, enter a game name and that ID, then add the game. Each request pins its target Studio ID; changing the selected game cannot redirect an existing run. If Studio restarts, use Games → Studio connection → Review Studio switch to confirm a replacement for the same game. See [recovery and reset](docs/STUDIO_CONNECTION_RECOVERY.md).
-6. Set `OPENROUTER_API_KEY` in `.env` and restart the worker, or select **OpenRouter** under **Settings → Model provider** and enter your own key. Keep **Apply recommended models** checked when migrating. No key is embedded in this repository. Team lets each agent choose a different verified tool-capable model, routing, parameters and limits. See [OpenRouter setup](docs/OPENROUTER_SETUP.md).
-7. Send a request in Lead Chat. Lead makes a dependency graph; specialists inspect and implement through real MCP calls. Go to Reviews to inspect and approve the exact arguments of every mutation, including Luau execution and play controls. The task resumes on approval.
-8. Tester independently reads the implementation, starts a playtest, collects console evidence, stops playtesting and records a verdict. Passing work enters user review; accept it or request changes. New implementation handoffs and revisions require new verification.
+1. Open **Codex** in the sidebar.
+2. Sign in with ChatGPT (browser or device code) or paste an OpenAI API key. Syntra sends the key once to the local Codex app-server; it is not stored in Syntra’s database, snapshots or diagnostics. Credentials live under `.data/codex-home` with owner-only permissions.
+3. Set the **project root**. Sessions may only open directories inside this real path. The default sandbox is `workspace-write`; network access is off unless explicitly enabled.
+4. Review the **main starting instructions** and the eight-agent topology on the Codex page. Defaults are:
+   - **Lead** — `gpt-6.2-sol`, the main orchestrator.
+   - **Architect, Builder, Frame, Scenic, Balance, Tester, Codex** — `gpt-6.1-terra`, the seven subagents.
+5. Create or select a project in **Games**, then send a request in **Lead** or **Home**. The Lead sets up the seven subagents through `delegate`; each subagent runs in its own Codex thread with the configured model.
+6. Approve or reject Codex commands/file changes and Roblox Studio mutations in **Codex** or **Review**. Reviews also show completed runs and uncertain operations.
+7. Use Roblox Studio’s official MCP command in **Settings → Roblox Studio connection** when you want live place edits. Discover Studios under **Games** and pin the returned Studio ID.
 
-Suggested first request: “Add a server-side checkpoint system to my obby. Preserve the existing map. Use numbered checkpoint parts, validate touches server-side, and verify respawn behavior in a playtest.” Save a place version before starting a significant change.
+Suggested first request: “Add a server-side checkpoint system to my obby. Preserve the existing map. Use numbered checkpoint parts, validate touches server-side, and verify respawn behavior in a playtest.”
+
+## Agent topology
+
+- **Lead** (`gpt-6.2-sol`) is the only main orchestrator. Its starting instructions tell it to set up the seven subagents before implementing anything.
+- **Architect** designs boundaries and APIs.
+- **Builder** implements Luau and server-side systems.
+- **Frame** builds interfaces.
+- **Scenic** builds worlds, lighting and environments.
+- **Balance** tunes economy and progression.
+- **Tester** independently inspects real evidence. It uses `codex_inspect` + `verify_codex` for local-code changes, or Studio inspection/playtest/console evidence for place changes.
+- **Codex** is the dedicated local-repository coder for focused code changes.
+
+All eight agents run through the Codex app-server. They have isolated prompts, private memory, task histories, dynamic tools, role permissions and independent execution cycles. Every turn is a real app-server turn; there is no production simulator or seeded activity.
 
 ## Runtime architecture
 
-- **Next.js** serves eleven responsive dashboard pages and a same-origin API proxy. All privileged operations go through the local worker. No browser-bundled API keys.
-- **Worker** (`worker/index.ts`) binds to `127.0.0.1:4318`. Authenticated HTTP uses a random 0600 local token, and WebSocket broadcasts only refresh notifications. The UI fetches protected snapshots through Next. HTTP polling is the fallback. `WORKER_PORT` is configurable; restart both processes when changing it.
-- **Seven independent agents** each have isolated prompts, persistent memory, conversation/tool context, role-based tools, task histories and execution cycles. Lead delegates; Architect designs; Builder codes Luau; Frame builds UI; Scenic builds worlds; Balance tunes economies; Tester checks behavior. Every model turn is a genuine separate request to the configured model provider; there is no production simulator or seeded activity.
-- **LangGraph** runs reason/tool phases with persistent SQLite checkpoints per task thread. Task messages and tool outcomes are separately persisted to support partial tool batches and restart recovery. The SQLite dependency scheduler runs one to three agents concurrently (configurable in Settings) and one task per agent. Dependencies, retries with backoff, handoffs, blocked-task recovery, step limits and user review are durable.
-- **Studio access** uses SDK stdio transport and discovered official tool schemas. Tool lists are intersected with role allowlists. A per-Studio database lock serializes all place operations, including reads, so agents never inspect a partially applied concurrent operation. Approval decisions bind to persisted tool call IDs and exact payloads. Unknown tools are denied; arbitrary Luau is always considered a mutation.
-- **Recovery** uses a tool-call ledger to prevent reapplying finished operations. If a write was interrupted or returned an ambiguous transport error, the task fails rather than replaying the call. Reviews shows uncertain operations: inspect Studio, record whether the call took effect, then retry the task in Tasks. Reservations for ambiguous provider calls remain counted against the cap.
-- **SQLite** uses WAL and transactions for tasks, agents, private memories, chat, games, runs, approvals, events, usage, locks and tool calls. Runtime data is in `.data/forge.sqlite` and `.data/checkpoints.sqlite`. Back up `.data` with processes stopped; do not commit it.
+- **Next.js** serves the responsive dashboard and a same-origin API proxy. All privileged operations go through the localhost worker. No browser-bundled credentials.
+- **Worker** (`worker/index.ts`) binds to `127.0.0.1:4318` with a random 0600 token. WebSocket broadcasts are refresh-only notifications; HTTP polling is the fallback. `WORKER_PORT` is configurable; restart both processes when changing it.
+- **Codex manager** (`worker/codex.ts`) speaks the official newline-delimited JSON-RPC protocol over stdio. It discovers the model catalog, starts/resumes threads, streams deltas and diffs, handles auth, tracks token usage, interrupts turns, and maps Codex approval requests to durable rows. Codex child processes receive a deliberately small environment allowlist; unrelated secrets are not inherited.
+- **Dynamic tools** expose Syntra’s internal operations (`delegate`, `handoff`, `ask_human`, `verify`, library, assets, pitches, memory) and role-approved Roblox Studio tools to each Codex turn. Studio calls still use discovered schemas, pinned Studio IDs, per-instance locks, approvals and the tool-call ledger.
+- **Scheduler** runs one to three agents concurrently (Settings), one task per agent. Dependencies, retries with backoff, handoffs, blocked-task recovery, step limits and user review are durable in SQLite. Codex turn failures are not replayed automatically.
+- **Recovery** marks unfinished Codex turns and running Studio calls as interrupted/uncertain on restart. Inspect the real diff or Studio state before retrying. Completed tool calls are cached by durable IDs and are never re-executed.
+- **Approvals** bind to persisted call IDs and exact payloads. Codex command/file/permission requests and Roblox mutations are reviewable. A task waiting for approval keeps its Codex turn alive; stopping, cancelling or timing out the task interrupts the turn and cancels pending approvals.
+- **SQLite** uses WAL and transactions for tasks, agents, memories, chat, games, runs, approvals, events, usage, locks, tool calls and Codex sessions/turns/events.
 
-### Spending behavior
+## Spending and usage
 
-OpenRouter is the primary provider. The low-cost default is `deepseek/deepseek-v4.1-flash`, verified in the public catalog with tool support on 2026-11-03. Every agent can choose a different model. Forge never substitutes another model. Provider fallback is disabled by default; Team exposes explicit routing options. Endpoint price ceilings default to the catalog token prices so routing cannot silently choose a more expensive endpoint.
+There is no OpenRouter, NVIDIA or model-routing configuration. Codex usage is reported as **tokens** (input, output, total) from `thread/tokenUsage/updated`; OpenAI billing is authoritative and happens on your OpenAI account. The workspace shows Codex token usage and turn counts, not a USD cap. Codex-specific limits and plan restrictions are controlled by OpenAI.
 
-The workspace cap defaults to **$9**, with optional per-agent USD limits. Each priced call reserves a conservative bound based on the configured context limit and endpoint price ceiling before sending a request. Parallel reservations count against both caps. Actual tokens and provider cost are recorded; missing dollar costs are explicitly estimated from the catalog. Definitive rejections release reservations, while ambiguous network outcomes retain them. Zero-priced models are supported when confirmed in the catalog. The UI shows workspace and per-agent usage. Additional non-token-priced charges are rejected to preserve accounting bounds. Provider account limits remain the final billing control.
+## Local project access and safety
 
-NVIDIA remains an explicitly selected secondary adapter, with its existing free-endpoint restrictions and token-only accounting. Historical usage, prompts, memories, tasks and approvals are preserved. Known built-in NVIDIA assignments migrate to the OpenRouter default; custom models are not overwritten. See [migration details](docs/OPENROUTER_SETUP.md).
+- Only directories inside `codexProjectRoot` are allowed. The worker resolves real paths and rejects `..` and symlink escapes.
+- Codex runs with `workspace-write` by default. `read-only` is available. Network access is off by default.
+- Every Codex command and file change requires approval unless you explicitly enable auto-approval for Codex operations.
+- The app-server is a local process for a trusted, personal machine. Do not expose the dashboard or worker to untrusted users. Settings can launch the configured MCP executable.
+- The official app-server does not provide a universal rollback primitive. Use Git, Studio Undo or saved place versions where applicable, verify the resulting state, and reconcile uncertain operations. Syntra never fabricates rollback success.
 
-### Approval and rollback boundaries
+## Reviews and control
 
-Approvals default on and can be explicitly disabled in Settings after pausing active work. Tester’s Luau is also gated because a “read-only” script can mutate state. This is a personal, trusted-machine application, not an internet-facing multi-user service. Settings can launch the configured MCP executable; do not expose the dashboard or worker to untrusted users.
+- **Codex** shows auth, project settings, the eight-agent topology, ad-hoc and task-owned sessions, streamed items, diffs, token usage, approvals and turn-level review.
+- **Review** groups pending Studio, asset and Codex approvals, exposes exact arguments, supports individual or batch decisions, and lists accepted work and review history.
+- **Tasks** shows dependencies, attempts, errors, pause/cancel controls and task-owned Codex sessions. A task-owned session cannot be driven from the Codex page.
+- **Settings** controls the Studio MCP command, approval policy, concurrency, task timeout, model step limit, themes and density.
 
-The current official MCP tool catalog does **not** promise a universal undo/rollback primitive. Forge never fabricates rollback success. Use Studio Undo when applicable or restore a saved place version, verify the resulting state, and then reconcile uncertain calls. The complete approved arguments and call results remain in the SQLite ledger. MCP image responses are stored as evidence; text-only model configurations should rely on structural and console tools rather than visual-only inspection.
+Shortcuts: **Ctrl/Cmd+K** opens the launcher, **Alt+1…9** switches the first nine views, **Alt+F** toggles focus mode, **?** shows shortcuts. Search and navigation state persist locally. **Download diagnostics** exports connection status, task counts, Codex session/token flags and agent models without credentials, prompts or tool arguments.
+
+## Library
+
+Open **Library** to browse **94 attributed official Roblox Creator Documentation guides** plus **22 Syntra agent playbooks and task recipes**. The pack covers security, data, Luau, networking, UI, world building, performance, economy, testing and release workflows, with offline source text, pinned revisions, practical do/avoid notes and checklists. Search spans section-level FTS: results show the matching heading and snippet, and a **Brief** button builds a cited, context-bounded task brief for a selected agent. Add your own guides, source links, Markdown files and images with **Add reference**; all eight Codex agents can consult the library through dynamic tools. Personal references stay in `.data/forge.sqlite`.
+
+The retrieval model is deliberately close to the useful part of RoAutomation’s Library—heading-aware chunks and relevance ranking—while adding an official bundled pack, section citations, agent/kind filters, checklists and a first-class `library_brief` tool. See [library/README.md](library/README.md).
+
+For source attribution, licensing and optional Python refresh instructions, see [library/README.md](library/README.md). The bundled pack works without Python; Python is needed only to scrape a newer source pack.
 
 ## Verification
 
@@ -69,60 +106,35 @@ The current official MCP tool catalog does **not** promise a universal undo/roll
 npm run typecheck
 npm test
 npm run build
-# With worker + dashboard running:
+```
+
+The suite includes real child-process Codex JSON-RPC fixtures, dynamic-tool delegation, streaming, Codex approvals/rejection, interruption, token usage, Studio approvals, SDK writes, independent Tester verification, restart recovery, concurrency, cancellation, path confinement and repeatable migrations. It does not call paid Codex inference and is not a real Roblox playtest.
+
+Optional browser checks (when Chromium and a display environment work):
+
+```bash
 npx playwright install chromium
 node scripts/smoke.mjs
 node scripts/ui-smoke.mjs
 node scripts/desktop-smoke.mjs
 node scripts/library-smoke.mjs
 node scripts/redesign-smoke.mjs
-# Focused provider/runtime check with an isolated worker + dashboard:
 FORGE_DATA_DIR=/tmp/forge-audit-check node scripts/reliability-smoke.mjs
 ```
 
-The integration test replaces **only model responses** with deterministic test responses and launches a **test-only MCP stdio server** through the actual SDK. It verifies Lead delegation → queued Builder → approval before file modification → independent Tester read/play/console evidence → user review, plus budget reservations, unauthorized-tool rejection and restart recovery. The test does not call a paid provider and is not a real Roblox playtest.
-
-Browser smoke checks visit all nine pages, check console errors and mobile overflow, and write desktop/mobile screenshots to `artifacts/`. The extended UI check covers 1440px, 768px and 390px layouts, quick prompts, Ctrl/Cmd+K navigation, Escape handling, and agent selection during live refreshes. Approval-state fixtures stay in browser request interception and never enter the application database. The redesign check additionally covers populated reviews from 320px to 1540px, partial batch failures, rejection cancellation, media inspection, revision feedback, acceptance, uncertain-operation recovery, and mobile navigation.
-
-The dashboard includes a compact Lead request bar, actionable setup and approval cards, live agent rows, game progress and budget tracking. Search pages, agents and tasks with **Ctrl/Cmd+K**. The selected game persists across pages and reloads. Geist is served locally under its included SIL Open Font License (`public/fonts/OFL.txt`).
-
-**Verified here:** dependency installation; production build; TypeScript; SDK protocol integration workflow; budget, permissions and recovery tests; local UI/browser checks (see delivery report for results).
-
-**Requires your environment:** configure your OpenRouter key and use **Test saved connection** for a short tool-call check. Real Studio modification/playtesting also requires your live Roblox Studio instance. Automated checks use synthetic credentials and stubbed inference, never a key pasted into chat.
+The Linux Termux/proot build machine used for this delivery cannot run Chromium reliably, so browser checks were not reported as passing here. See the verification notes in [the Codex integration guide](docs/CODEX_INTEGRATION.md).
 
 ## Official references
 
-- Roblox Studio MCP setup and current tool catalog: https://create.roblox.com/docs/studio/mcp
+- OpenAI Codex app-server: https://github.com/openai/codex/tree/main/codex-rs/app-server
+- Codex app-server protocol schemas: https://github.com/openai/codex/tree/main/codex-rs/app-server-protocol/schema/json
+- Roblox Studio MCP setup and tool catalog: https://create.roblox.com/docs/studio/mcp
 - MCP TypeScript SDK: https://github.com/modelcontextprotocol/typescript-sdk
-- LangGraph persistence: https://docs.langchain.com/oss/javascript/langgraph/persistence
-- OpenRouter model catalog: https://openrouter.ai/api/v1/models
-- OpenRouter tools and multi-turn messages: https://openrouter.ai/docs/guides/features/tool-calling
-- OpenRouter provider routing: https://openrouter.ai/docs/guides/routing/provider-selection
 
-## Library
+## Documentation
 
-Open **Library** in the sidebar to browse 31 attributed official Roblox guides covering security, data, Luau, networking, performance, UI, world building, design, economy and release workflows. Search article text and code, bookmark references, or open a guide to read its practical do/don’t notes and offline source text. Add your own guides, source links, Markdown files and images with **Add reference**. All seven agents can consult this library while working. Personal references stay in `.data/forge.sqlite`.
-
-For source attribution, licensing and optional Python refresh instructions, see [library/README.md](library/README.md). The bundled pack works on Windows without installing Python; Python is needed only to scrape a newer source pack.
-
-## Desktop workspace
-
-Forge uses a near-black canvas, a persistent project toolbar, and a compact sidebar with real agent, task, review, and budget information. On phones, navigation opens in a keyboard-accessible drawer. Reviews group proposed changes and media deliverables, with detailed inspection, batch approvals, rejection confirmation, and revision feedback. In **Settings → Workspace appearance**, choose **Nord**, **Graphite** or **Evergreen**, select compact/comfortable density, and toggle focus mode. These preferences are saved on the current browser.
-
-**Alt+1…9** switches pages, **Alt+F** toggles navigation, **Ctrl/Cmd+K** opens the launcher, and **?** shows shortcuts. Workspace shortcuts do not run while editing text. Launcher task results open the matching task inspector. Failed and blocked tasks also appear in the workspace recovery pane.
-
-Use **Download diagnostics** in the sidebar or Settings to save connection status, model configuration flags, task counts and spending totals for troubleshooting. The export excludes credentials, prompts and messages. See [docs/DESIGN.md](docs/DESIGN.md) for the design system, review behavior, and verification details.
-
-## V2 features
-
-The existing Forge design is retained. New workspaces add project-scoped streamed Lead responses, explicit execution-plan approval, agent work panels and follow-ups, structured tasks with priority/dependencies, safe pause/cancel controls, tracked human questions, persistent review notes/history, and reusable assets/systems. See [the feature audit and integration guide](docs/FEATURE_AUDIT_V2.md).
-
-Games includes lifecycle metadata and LiveOps views. Market and LiveOps accept validated JSON exports with a source URL, ISO 8601 observation time, and quality (`exported`, `sampled`, or `estimated`). Their Import dialogs document the JSON format. No live telemetry or market feed is connected by default. Pitches retain versions and market evidence; an accepted pitch can become a planning project and an approval-gated Lead task.
-
-Library defaults to the existing References section, with Assets and Systems tabs alongside it. Local media uploads are limited to 2 MB and validated against their declared type. Larger media can be referenced by URL. Script/module content is stored as text; importing or approving an artifact never executes, installs, uploads, or publishes it. Task and run stops interrupt inference and waiting operations; an already-sent Studio operation may finish and is flagged for reconciliation if its result is ambiguous.
-
-Quick verification is `npm test` plus `npm run build`. For browser integration, start the worker and web app with the same explicitly isolated `/tmp/forge-v2-*` `FORGE_DATA_DIR`, then run `FORGE_DATA_DIR=/tmp/forge-v2-check node scripts/features-v2-smoke.mjs`. It tests the changed workflows and focused mobile layouts. Add `--full` for the longer all-route, three-width matrix. The script refuses a production data directory. All captured V2 examples use that isolated database.
-
-## Reliability audit
-
-See [the audit, fixes and verification report](docs/RELIABILITY_AUDIT.md) for the API → scheduler → agent → MCP execution path, regression coverage and live-integration limitations.
+- [Codex integration and limitations](docs/CODEX_INTEGRATION.md)
+- [Design system](docs/DESIGN.md)
+- [Studio connection recovery](docs/STUDIO_CONNECTION_RECOVERY.md)
+- [Reliability audit](docs/RELIABILITY_AUDIT.md)
+- [V2 feature audit](docs/FEATURE_AUDIT_V2.md)

@@ -3,6 +3,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
 import { db, get, set, task, addTask, event, dataDir } from "./store";
+import { codex } from "./codex";
+import { resolveToolApproval } from "./tool-approvals";
 import { roles } from "../src/lib/roles";
 import {
   assetKinds,
@@ -190,6 +192,29 @@ export function decideApproval(body: unknown) {
     if (approval.status === status) return { ok: true, duplicate: true };
     if (approval.status !== "pending")
       throw new Error("Approval is no longer pending");
+    if (approval.provider === "codex") {
+      if (!codex.resolveApproval(approval.id, a.approved, a.note))
+        throw new Error("This Codex approval is no longer waiting");
+      audit(
+        "approval",
+        a.id,
+        a.requestChanges ? "changes_requested" : status,
+        a.note,
+        null,
+      );
+      if (!approval.task_id.startsWith("codex-session:"))
+        publicMessage(
+          approval.task_id,
+          "User",
+          "decision",
+          `${status}: ${approval.tool}${a.note ? `\n${a.note}` : ""}`,
+        );
+      event(
+        a.approved ? "Codex operation approved" : "Codex operation rejected",
+        "User",
+      );
+      return { ok: true };
+    }
     const { t, run } = runForTask(approval.task_id);
     if (run.status === "cancelled" || t.status === "cancelled")
       throw new Error("This work has been cancelled");
@@ -202,9 +227,10 @@ export function decideApproval(body: unknown) {
     db.prepare(
       "UPDATE approvals SET status=?,note=?,reviewer='User',decided_at=CURRENT_TIMESTAMP WHERE id=?",
     ).run(status, a.note, a.id);
+    const dynamic = resolveToolApproval(a.id, a.approved, a.note);
     db.prepare(
-      "UPDATE tasks SET status='queued',updated=CURRENT_TIMESTAMP WHERE id=? AND status='approval'",
-    ).run(approval.task_id);
+      "UPDATE tasks SET status=CASE WHEN ? THEN 'running' ELSE 'queued' END,updated=CURRENT_TIMESTAMP WHERE id=? AND status='approval'",
+    ).run(dynamic ? 1 : 0, approval.task_id);
     audit(
       "approval",
       a.id,

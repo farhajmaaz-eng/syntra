@@ -242,18 +242,14 @@ try {
   console.log(
     "PASS backed-up connection reset and manual MCP/instance setup for existing queued work",
   );
-  await api("provider/save", {
-    provider: "openrouter",
-    apiKey: "test-synthetic-key-never-used-for-inference",
-  });
   await page.goto(`${base}/settings`);
   await page
     .getByLabel("Reset scope", { exact: true })
     .selectOption("everything");
   await page.getByRole("button", { name: "Review reset", exact: true }).click();
-  dialog = page.getByRole("dialog", { name: "Reset everything in Forge?" });
+  dialog = page.getByRole("dialog", { name: /Reset everything/i });
   await expect(dialog).toBeVisible();
-  await dialog.getByLabel("Type RESET FORGE to confirm").fill("RESET FORGE");
+  await dialog.getByLabel(/Type RESET/i).fill("RESET STUDIO");
   await page.evaluate(() => {
     localStorage.setItem("forge-game", "test");
     localStorage.setItem("unrelated-preference", "keep");
@@ -265,7 +261,7 @@ try {
   data = await snapshot();
   expect(data.games).toHaveLength(0);
   expect(data.tasks).toHaveLength(0);
-  expect(data.agents).toHaveLength(7);
+  expect(data.agents).toHaveLength(8);
   expect(data.provider.configured).toBe(false);
   expect(data.settings.paused).toBe(true);
   expect(data.settings.mcpCommand).toBe("");

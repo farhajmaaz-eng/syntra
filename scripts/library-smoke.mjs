@@ -5,7 +5,7 @@ const errors = [];
 p.on("pageerror", (e) => errors.push(e.message));
 try {
   await p.goto("http://127.0.0.1:3000/library");
-  await expect(p.locator(".reference-card")).toHaveCount(31);
+  await expect(p.locator(".reference-card")).toHaveCount(116);
   await p.getByRole("textbox", { name: "Search library" }).fill("RemoteEvent");
   await expect(p.locator(".reference-card").first()).toBeVisible();
   await p.locator(".reference-card .reference-open").first().click();
@@ -53,7 +53,7 @@ try {
     .click();
   await expect(p.locator(".reference-reader")).toHaveCount(0);
   await p.getByRole("textbox", { name: "Search library" }).fill("");
-  await expect(p.locator(".reference-card")).toHaveCount(31);
+  await expect(p.locator(".reference-card")).toHaveCount(116);
   await p.screenshot({ path: "artifacts/library-desktop.png", fullPage: true });
   await p.setViewportSize({ width: 390, height: 844 });
   if (await p.evaluate(() => document.documentElement.scrollWidth > innerWidth))

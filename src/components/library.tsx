@@ -15,12 +15,20 @@ import {
   Trash2,
   Pencil,
   Image as ImageIcon,
+  Brain,
+  ListChecks,
+  Sparkles,
+  Users,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { ConfirmDialog, ResourceSkeleton } from "./ui/workspace-primitives";
 import { safeResponseJson } from "@/lib/utils";
+import { roles } from "@/lib/roles";
 const categories = [
   "All references",
+  "Agent playbooks",
+  "Task recipes",
+  "Official guides",
   "Security",
   "Data & architecture",
   "Luau & networking",
@@ -32,11 +40,35 @@ const categories = [
   "Testing & release",
   "My references",
 ];
+const kindFor = (category: string) =>
+  category === "Agent playbooks"
+    ? "playbook"
+    : category === "Task recipes"
+      ? "recipe"
+      : category === "Official guides"
+        ? "official"
+        : category === "My references"
+          ? "personal"
+          : "";
+const kindLabel = (kind: string) =>
+  kind === "official"
+    ? "Roblox Creator Docs"
+    : kind === "playbook"
+      ? "Agent playbook"
+      : kind === "recipe"
+        ? "Task recipe"
+        : kind === "personal"
+          ? "Personal reference"
+          : kind;
 export default function Library() {
   const [items, setItems] = useState<any[]>([]),
     [query, setQuery] = useState(""),
     [category, setCategory] = useState("All references"),
     [starred, setStarred] = useState(false),
+    [agent, setAgent] = useState(""),
+    [stats, setStats] = useState<any>(null),
+    [brief, setBrief] = useState<any>(null),
+    [briefLoading, setBriefLoading] = useState(false),
     [article, setArticle] = useState<any>(null),
     [editing, setEditing] = useState<any>(null),
     [error, setError] = useState(""),
@@ -54,9 +86,11 @@ export default function Library() {
             new URLSearchParams({
               q: query,
               category:
-                category === "All references" || category === "My references"
+                ["All references", "My references", "Agent playbooks", "Task recipes", "Official guides"].includes(category)
                   ? ""
                   : category,
+              kind: kindFor(category),
+              agent,
               starred: String(starred),
             }),
           { signal: c.signal },
@@ -79,11 +113,21 @@ export default function Library() {
       c.abort();
       clearTimeout(timeout);
     };
-  }, [query, category, starred, revision]);
-  async function read(id: string) {
+  }, [query, category, starred, agent, revision]);
+  useEffect(() => {
+    void fetch("/api/library?stats=true")
+      .then((r) => safeResponseJson(r))
+      .then(setStats)
+      .catch(() => {});
+  }, [revision]);
+  async function read(id: string, sectionId?: string) {
     setLoading(true);
     try {
-      const r = await fetch("/api/library?id=" + encodeURIComponent(id));
+      const r = await fetch(
+        "/api/library?id=" +
+          encodeURIComponent(id) +
+          (sectionId ? "&section=" + encodeURIComponent(sectionId) : ""),
+      );
       const a = await safeResponseJson(r);
       if (!r.ok || !a) throw new Error(a?.error || "Reference not found");
       setArticle(a);
@@ -117,6 +161,27 @@ export default function Library() {
       setSaving(false);
     }
   }
+  async function makeBrief() {
+    setBriefLoading(true);
+    setBrief(null);
+    try {
+      const r = await fetch(
+        "/api/library?" +
+          new URLSearchParams({
+            brief: query || "Roblox game development",
+            agent,
+            limit: "6",
+          }),
+      );
+      const value = await safeResponseJson(r);
+      if (!r.ok) throw new Error(value.error || "Brief unavailable");
+      setBrief(value);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBriefLoading(false);
+    }
+  }
   async function favorite(a: any) {
     if (await action("star", { id: a.id, starred: !a.starred })) {
       if (article?.id === a.id) setArticle({ ...article, starred: !a.starred });
@@ -141,9 +206,17 @@ export default function Library() {
           <span className="section-kicker">Reference index</span>
           <h2>Development library</h2>
           <p>
-            Official guides, practical do’s and don’ts, and the knowledge you
-            collect along the way.
+            Official Roblox guides, agent playbooks, task recipes and the
+            knowledge you collect along the way. Agents get the matching
+            section, not the whole manual.
           </p>
+          {stats && (
+            <small className="library-stats">
+              {stats.total} references · {stats.official} official ·{" "}
+              {stats.playbooks} agent playbooks · {stats.recipes} recipes ·{" "}
+              {stats.sections.toLocaleString()} searchable sections
+            </small>
+          )}
         </div>
         <Button onClick={fresh}>
           <Plus size={16} /> Add reference
@@ -191,13 +264,14 @@ export default function Library() {
             <BookOpen size={19} />
             <strong>Agent access</strong>
             <p>
-              All seven agents can search these guides and read them during
-              tasks. References are consulted on demand, keeping model context
-              focused.
+              All eight Codex agents can search sections, request a cited task
+              brief and read only the passages they need. Official text is saved
+              locally and attributed to its Creator Documentation revision.
             </p>
             <small>
-              Official text is saved locally. External images and links may need
-              an internet connection.
+              RoAutomation-style retrieval: heading-aware chunks, relevance
+              ranking and a bounded context budget. External images and links may
+              need an internet connection.
             </small>
           </div>
         </aside>
@@ -438,6 +512,16 @@ export default function Library() {
                   )}
                 </span>
               </div>
+              {article.agents?.length > 0 && (
+                <div className="library-agents">
+                  <Users size={14} />
+                  {article.agents.map((name: string) => (
+                    <span className="badge" key={name}>
+                      {name}
+                    </span>
+                  ))}
+                </div>
+              )}
               {article.source && (
                 <a
                   className="text-link source-link"
@@ -462,6 +546,47 @@ export default function Library() {
                   current policies and limits. Practical notes below are Syntra’s
                   editorial guidance.
                 </p>
+              )}
+              {article.sections?.length > 1 && !article.section && (
+                <details className="library-toc" open>
+                  <summary>
+                    <ListChecks size={15} /> On this page ({article.sectionCount} sections)
+                  </summary>
+                  <ol>
+                    {article.sections.map((section: any) => (
+                      <li key={section.id}>
+                        <button onClick={() => read(article.id, section.id)}>
+                          {section.heading}
+                        </button>
+                        <small>{section.chars.toLocaleString()} chars</small>
+                      </li>
+                    ))}
+                  </ol>
+                </details>
+              )}
+              {article.section && (
+                <div className="library-section-heading">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => read(article.id)}
+                  >
+                    <ArrowLeft size={14} /> Full guide
+                  </Button>
+                  <span className="badge">{article.section.heading}</span>
+                </div>
+              )}
+              {article.checklist?.length > 0 && (
+                <section className="library-checklist">
+                  <h3>
+                    <ListChecks size={16} /> Checklist
+                  </h3>
+                  <ul>
+                    {article.checklist.map((item: string) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </section>
               )}
               {article.image && (
                 <img
@@ -530,7 +655,7 @@ export default function Library() {
             </article>
           ) : (
             <>
-              <div className="library-search">
+              <div className="library-search library-toolbar">
                 <Search size={18} />
                 <input
                   aria-label="Search library"
@@ -538,8 +663,66 @@ export default function Library() {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
+                <select
+                  aria-label="Filter by agent"
+                  value={agent}
+                  onChange={(e) => setAgent(e.target.value)}
+                >
+                  <option value="">All agents</option>
+                  {Object.keys(roles).map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={briefLoading}
+                  onClick={makeBrief}
+                  title="Build a cited brief for the selected agent"
+                >
+                  <Sparkles size={14} />
+                  {briefLoading ? "Briefing…" : "Brief"}
+                </Button>
                 <span>{items.length} references</span>
               </div>
+              {brief && (
+                <section className="panel library-brief">
+                  <div className="panel-heading">
+                    <h3>
+                      <Brain size={16} /> Task brief
+                      <small>
+                        {brief.count} sections · {brief.chars.toLocaleString()}{" "}
+                        characters
+                      </small>
+                    </h3>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setBrief(null)}
+                    >
+                      Close
+                    </Button>
+                  </div>
+                  {brief.sections?.length ? (
+                    brief.sections.map((section: any) => (
+                      <article key={section.sectionId}>
+                        <strong>{section.title}</strong>
+                        <small>
+                          {section.heading} · {kindLabel(section.kind)} ·{" "}
+                          <code>[library:{section.id}]</code>
+                        </small>
+                        <Markdown remarkPlugins={[remarkGfm]}>
+                          {section.content}
+                        </Markdown>
+                      </article>
+                    ))
+                  ) : (
+                    <p className="muted-text">No matching reference sections.</p>
+                  )}
+                </section>
+              )}
               {loading ? (
                 <ResourceSkeleton
                   variant="cards"
@@ -550,7 +733,9 @@ export default function Library() {
                   {items.map((a) => (
                     <article className="panel reference-card" key={a.id}>
                       <div className="reference-card-top">
-                        <span className="badge">{a.category}</span>
+                        <span className={`badge library-kind ${a.kind}`}>
+                          {kindLabel(a.kind)}
+                        </span>
                         <button
                           aria-label={
                             a.starred ? "Unsave " + a.title : "Save " + a.title
@@ -571,12 +756,16 @@ export default function Library() {
                         <BookOpen size={24} />
                         <h3>{a.title}</h3>
                         <p>{a.summary || "Your saved guide or reference."}</p>
+                        {a.matches?.[0]?.snippet && (
+                          <p className="library-match">
+                            <strong>{a.matches[0].heading}:</strong>{" "}
+                            {a.matches[0].snippet}
+                          </p>
+                        )}
                       </button>
                       <div className="reference-card-footer">
                         <small>
-                          {a.kind === "official"
-                            ? "Roblox Creator Docs"
-                            : "Personal reference"}
+                          {kindLabel(a.kind)} · {a.category}
                         </small>
                         <button onClick={() => read(a.id)}>Read guide →</button>
                       </div>

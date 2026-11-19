@@ -12,6 +12,7 @@ import { useDesktopPreferences } from "@/lib/desktop";
 import { Appearance, Shortcuts } from "./desktop-controls";
 import {
   Activity,
+  Cpu,
   Keyboard,
   Search,
   ArrowRight,
@@ -37,9 +38,9 @@ import { Avatar } from "./agent-avatar";
 import Overview from "./overview";
 import LibraryHub from "./library-hub";
 import WorkspaceReset from "./workspace-reset";
-import ProviderSettings from "./provider-settings";
 import TaskWorkspace, { NewTaskDialog } from "./task-workspace";
 import AgentWorkspace, { LeadWorkspace } from "./agent-workspace";
+import CodexWorkspace from "./codex-workspace";
 import GameOps from "./game-ops";
 import Market from "./market";
 import Pitches from "./pitches";
@@ -243,13 +244,22 @@ export default function Studio({
     const notices: Record<string, string> = {
       chat: "Request queued",
       settings: "Settings saved",
-      "provider/save": "Provider settings saved",
-      "provider/test": "Provider connection check finished",
       models: "Model catalog refreshed",
       games: "Project added",
       "games/update": "Project updated",
       "tasks/create": "Task created",
       "tasks/update": "Task updated",
+      "codex/settings": "Codex settings saved",
+      "codex/session/create": "Codex session created",
+      "codex/session/turn": "Codex turn started",
+      "codex/session/interrupt": "Codex turn interrupted",
+      "codex/session/archive": "Codex session updated",
+      "codex/session/review": "Codex review recorded",
+      "codex/login/api-key": "Codex API key accepted",
+      "codex/login/chatgpt": "Complete Codex sign-in in your browser",
+      "codex/login/cancel": "Codex sign-in cancelled",
+      "codex/logout": "Codex signed out",
+      "codex/models": "Codex model catalog refreshed",
       "tasks/control": "Task updated",
       "runs/control": "Run updated",
       "plans/approve": "Execution plan approved",
@@ -476,10 +486,12 @@ export default function Studio({
                     chat: "Plan changes with Lead and review the results.",
                     team: "Configure agent models, tools and instructions.",
                     tasks: "Inspect work, dependencies and failures.",
+                    codex:
+                      "Run and review OpenAI Codex sessions in your local project.",
                     games: "Manage local Roblox Studio targets.",
                     reviews: "Approve tool calls and accept verified work.",
                     logs: "Inspect worker events and API usage.",
-                    settings: "Connections, spending limits and appearance.",
+                    settings: "Codex, Studio connection, runtime limits and appearance.",
                     pitches:
                       "Develop versioned game concepts with source evidence.",
                     market:
@@ -551,6 +563,9 @@ export default function Studio({
             act={act}
             busy={busy}
           />
+        )}
+        {data && page === "codex" && (
+          <CodexWorkspace data={data} act={act} busy={busy} />
         )}
         {data && page === "tasks" && (
           <TaskWorkspace
@@ -759,7 +774,6 @@ function SettingsForm({
             return;
           }
           void act("settings", {
-            cap: Number(f.get("cap")),
             maxSteps: Number(f.get("maxSteps")),
             concurrency: Number(f.get("concurrency")),
             taskTimeoutMs: Number(f.get("taskTimeoutMs")),
@@ -804,20 +818,9 @@ function SettingsForm({
         </label>
         <hr />
         <h3>
-          <Gauge size={18} /> Runtime & spending
+          <Gauge size={18} /> Runtime
         </h3>
         <div className="form-grid">
-          <label>
-            Workspace spending cap (USD)
-            <input
-              name="cap"
-              type="number"
-              min="0"
-              max="1000"
-              step="0.01"
-              defaultValue={s.cap}
-            />
-          </label>
           <label>
             Concurrent agents (1–3)
             <input
@@ -849,26 +852,28 @@ function SettingsForm({
             />
           </label>
         </div>
-        {data.provider?.id === "nvidia" ? (
-          <p>
-            NIM token usage is tracked separately. NVIDIA pricing is not
-            supplied, so the USD cap below does not cover unpriced NIM calls.
-          </p>
-        ) : null}
-        <progress
-          aria-label="Budget committed"
-          max={s.cap || 1}
-          value={data.spend.cost + data.spend.reserved}
-        />
-        <p>
-          Spent {money(data.spend.cost)} · Reserved {money(data.spend.reserved)}
-          . Reservations count against the cap, including calls with unknown
-          outcomes.
-        </p>
         <Button disabled={busy}>Save configuration</Button>
       </form>
       <div>
-        <ProviderSettings data={data} act={act} busy={busy} />
+        <section className="panel form spaced">
+          <h3>
+            <Cpu size={18} /> OpenAI Codex
+          </h3>
+          <p>
+            All eight agents run through the official Codex app-server. Sign
+            in, choose the project root, and review Codex sessions on the
+            Codex page.
+          </p>
+          <p>
+            <strong>{data.codex?.account ? "Signed in" : "Sign-in required"}</strong>
+            {data.codex?.models?.length
+              ? ` · ${data.codex.models.length} models available`
+              : " · open the Codex page to connect"}
+          </p>
+          <Button asChild variant="outline">
+            <Link href="/codex">Open Codex</Link>
+          </Button>
+        </section>
         <section className="panel form spaced">
           <h3>
             <Radio size={18} /> Studio bridge <small>(optional)</small>

@@ -13,6 +13,7 @@ export default async function Page({
       "chat",
       "team",
       "tasks",
+      "codex",
       "games",
       "reviews",
       "library",

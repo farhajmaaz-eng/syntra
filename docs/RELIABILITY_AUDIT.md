@@ -1,65 +1,76 @@
-# Provider, Studio and scheduler reliability audit
+# Reliability audit
 
-This implements `newstuff.md` in the existing application. The current design, routes, API proxy, LangGraph agent loop, SQLite task scheduler, role permissions and user approval workflow are retained. No inference simulator is shipped in the application.
+Syntra Studio is Codex-only. The dashboard, authenticated localhost worker,
+SQLite scheduler, Studio MCP integration, approvals, review workflow and
+tool-call ledger are retained. OpenRouter and NVIDIA provider configuration has
+been removed. No inference simulator is shipped.
 
-## Execution path audited
+## Execution path
 
-Browser actions pass through the same-origin Next.js API proxy to the authenticated localhost worker. Validated actions persist runs/tasks in SQLite. `tick()` reconciles dependencies and starts at most the configured number of distinct agents. LangGraph loads the durable conversation, bounded project/dependency context and private memory, then calls the selected provider. Assistant tool calls are assembled before execution. Internal delegation and other persistent operations use transactions and durable call IDs. Studio calls use discovered schemas, role permissions, pinned instance IDs, approvals, a durable ledger and per-instance locks. Results return as tool messages for the next turn. Readback and independent Tester evidence precede user review.
+1. The browser sends requests through the same-origin Next.js API proxy to the
+   authenticated localhost worker.
+2. Validated actions persist runs and tasks in SQLite. `tick()` reconciles
+   dependencies and starts at most the configured number of distinct agents.
+3. Each task gets a Codex thread through `worker/codex.ts`. The Lead is the main
+   orchestrator (`gpt-6.2-sol`); the seven subagents use `gpt-6.1-terra` by
+   default.
+4. Syntra exposes internal operations and role-approved Studio tools as Codex
+   dynamic tools. `item/tool/call` requests execute the real operation, wait for
+   approvals where required, and persist ledger entries.
+5. Studio calls use discovered schemas, pinned instance IDs, per-instance
+   locks, role permissions, approval rows and a durable call ledger.
+6. Readback, independent Tester evidence and user review precede acceptance.
+7. Restart recovery marks unfinished Codex turns, running Studio calls and
+   pending approvals as interrupted/uncertain. Completed calls are never
+   replayed.
 
-Relevant files: `worker/index.ts`, `worker/provider.ts`, `worker/model.ts`, `worker/stream.ts`, `worker/runtime.ts`, `worker/mcp.ts`, `worker/store.ts` and `worker/migrations.ts`.
+Relevant files: `worker/index.ts`, `worker/codex.ts`, `worker/runtime.ts`,
+`worker/mcp.ts`, `worker/store.ts`, `worker/migrations.ts`,
+`worker/features.ts` and `worker/tool-approvals.ts`.
 
-## Concrete defects and fixes
+## Safety controls
 
-| Defect found                                                                                                        | Fix                                                                                                                                                                                                                                                                                                                                                    |
-| ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Provider setup only accepted NVIDIA and restricted every agent to its four IDs.                                     | OpenRouter is the primary provider; settings accept both supported adapters explicitly. Existing NVIDIA credentials stay separate. Known built-in NVIDIA assignments migrate without overwriting custom prompts or arbitrary model assignments.                                                                                                        |
-| Legacy OpenRouter accounting rejected confirmed zero-priced models.                                                 | Permit finite zero token prices; continue rejecting missing, negative or unsafe prices.                                                                                                                                                                                                                                                                |
-| Model selection had no live capability checks, configurable routing, context bound or per-agent spend limit.        | Catalog membership/tool support/output limits are checked; catalog metadata expires after a day. Add validated per-agent routing, parameters, request timeouts, context limits and USD limits. No model fallback; provider fallback defaults off and endpoint price ceilings are explicit.                                                             |
-| Provider failures were repeatedly retried at whole-task level, including invalid credentials.                       | Permanent/auth/credit/configuration failures stop with actionable messages. Definitive 429/502/503 responses get bounded exponential backoff and short Retry-After support. Unknown network/stream outcomes are not automatically regenerated. Every ambiguous 5xx attempt keeps a separate spending reservation, even when a later retry succeeds.    |
-| Interrupted/truncated/empty/malformed model output could be treated as completion.                                  | Require complete stream framing and valid accounting on the priced path, reject length/filter/error finishes and invalid/duplicate tool IDs before executing any call, and retain ambiguous reservations. Invalid JSON tool arguments return corrective tool feedback.                                                                                 |
-| Reasoning details were discarded between model turns.                                                               | Retain opaque reasoning details in private conversation state for compatible multi-turn providers; show only response text in public messages.                                                                                                                                                                                                         |
-| Studio command arguments did not expand Windows variables, and partial startup failures leaked stale state.         | Expand `%NAME%` and `${NAME}` on the worker without shell-evaluating argument arrays. Bound initialization/discovery, clean up failed transports and clear tools on close. Inherit only the SDK's safe subprocess environment, excluding API keys.                                                                                                     |
-| Cached advertised tools survived disconnects, and inputs were not validated against their actual schema.            | Clear stale tools, refresh on tool-list changes/reconnect and page initial discovery. Validate current JSON Schema before approval and again after the lock wait. Unsupported tools get actionable alternatives; only advertised, role-approved read aliases are offered. No invented `script_read` replacement executes automatically.                |
-| A restarted Studio could leave an old selected ID unnoticed.                                                        | Discover instances before execution and reject missing pinned IDs. Never redirect an existing run to another place. Reconnect with capped backoff after transport loss.                                                                                                                                                                                |
-| Failed MCP responses and transport failures were not distinguished.                                                 | Confirm success only from actual MCP responses. Definite read/schema errors return corrective feedback; possibly partial mutations remain uncertain for user reconciliation. Connection and tool errors are visible in the existing UI.                                                                                                                |
-| Serializing individual calls still allowed two agents to inspect the same old state and overwrite each other later. | Track persisted Studio revisions and per-task inspection revisions. Check freshness again under the Studio lock before content mutations; another agent’s edit requires a fresh inspection. Ephemeral play/input controls remain serialized without invalidating script inspections. External Studio clients are outside this revision ledger.         |
-| A timed-out write released its Studio lock and allowed conflicting follow-up work.                                  | Keep the lock for uncertain mutations and block calls to any Studio with an unresolved ledger entry. Reconciliation releases the lock; restart reconstructs the restriction from persisted evidence.                                                                                                                                                   |
-| Model prose could complete implementation without inspection/readback.                                              | Gate mutations on successful inspection evidence and ask for actual readback after the latest write. Tester requires structural inspection, play operations and console evidence before a passing verdict. Models still interpret the actual game-specific acceptance evidence; Forge does not pretend this is a formal proof of gameplay correctness. |
-| Repeated delegation under different call IDs duplicated tasks and could grow indefinitely.                          | Deduplicate matching delegation, persist ownership/acceptance criteria, reject self handoffs, bound handoff depth and tasks per run, and validate dependencies without breaking supported same-project cross-run dependencies.                                                                                                                         |
-| Global concurrency was hardcoded, and task cancellation waited for stalled inference.                               | Expose one-to-three-agent concurrency, preserve one active task per agent, add execution/request deadlines and abort inference/lock waits on stop. Already-sent writes remain uncertain if their response is interrupted. Clear pending approval/question records for cancelled tasks.                                                                 |
-| Restart recovery discarded pending stop requests and could immediately requeue interrupted writes.                  | Preserve pause/cancel intent, mark interrupted calls/streams, fail tasks with newly interrupted provider requests or uncertain Studio operations before scheduling, and unblock dependency-only failures once their prerequisites complete. History remains persisted.                                                                                 |
-| A second worker could recover another live worker's locks/queue.                                                    | Acquire an OS-backed SQLite ownership lock in a separate file before opening application SQLite/runtime; the lock releases on process death without stale-PID cleanup races. A PID file identifies the owner. This applies even when ports differ. WAL, busy timeout and transactional updates remain in use.                                          |
-| Retrying a dependency failure could requeue unrelated tasks waiting on a human answer.                              | Restrict propagation to dependency-blocked tasks and preserve explicit human waiting states.                                                                                                                                                                                                                                                           |
-| Expanded task details collapsed when a live task moved between status groups, hiding the new error.                 | Keep expanded IDs in the workspace so details and recovery controls survive regrouping. The browser regression exercises queued → failed.                                                                                                                                                                                                              |
-| Slow snapshot requests could overwrite newer state, and the proxy timeout was shorter than provider requests.       | Ignore superseded snapshot responses, bound browser requests, and increase the provider-action proxy deadline. Show Studio connection errors beside its status.                                                                                                                                                                                        |
-| Raw external error text could expose secrets.                                                                       | Add structured event logging, redaction of known keys/Bearer tokens and safe public-response serialization. Ignore credential/PID/SQLite state files even under custom data directories.                                                                                                                                                               |
+| Control | Implementation |
+| --- | --- |
+| Credential isolation | Codex runs with `CODEX_HOME=$FORGE_DATA_DIR/codex-home`; tokens are owned by the official app-server and never enter Syntra SQLite, snapshots or diagnostics. |
+| Process environment | The Codex child receives a small allowlist. Provider and unrelated secrets are not inherited. |
+| Project confinement | Session working directories must resolve inside the configured real project root; `..` and symlink escapes are rejected. |
+| Sandboxing | `workspace-write` by default, optional `read-only`, network off unless explicitly enabled. |
+| Codex approvals | Command, file-change, permission and user-input requests become durable approval rows. Stop/cancel/timeout interrupts the turn and cancels pending approvals. |
+| Studio approvals | Mutations still require inspection, exact-argument approval, pinned Studio binding and ledger recording. |
+| Readback | A Studio write without a later inspection read fails the task rather than claiming success. |
+| Independent verification | Local-code runs require `codex_inspect` + `verify_codex`; Studio runs require inspection, playtest start/stop and console evidence. |
+| Uncertain outcomes | Interrupted writes and ambiguous tools are marked uncertain and block replay until reconciled in Reviews. |
+| Restart recovery | Running tasks fail with an inspection instruction; pending approvals are cancelled; completed evidence is preserved. |
+| Concurrent agents | One task per agent; configurable concurrency from one to three; per-task timeouts and cancellation. |
 
-## Configuration and verification
+## Regression coverage
 
-See [OpenRouter setup](OPENROUTER_SETUP.md) for `.env`, Windows/macOS MCP commands, model configuration, pricing/limits, startup and recovery instructions. The default model's ID, capabilities and prices were verified against the public OpenRouter catalog. Roblox tool semantics were checked against [official Studio MCP documentation](https://create.roblox.com/docs/studio/mcp); SDK lifecycle/schema APIs were checked in the installed official package. Next route changes follow the bundled Next.js 16 documentation.
+- Codex JSON-RPC startup, auth status, catalog discovery, path confinement,
+  streaming, command approvals and rejection, usage, interruption and failures.
+- Dynamic-tool execution: delegation, handoffs, human questions, library,
+  assets, pitches, Studio reads/mutations, play controls and verification.
+- Full Lead → Builder → approval → SDK write → readback → Tester → review flow.
+- Concurrency, cancellation, timeout, permanent failure without replay,
+  duplicate delegation, bounded tasks, restart recovery and single-worker
+  ownership.
+- Repeatable additive migrations, workspace reset/backup behavior and Studio
+  re-pinning.
+- Feature storage, media validation, market/telemetry imports, pitches, assets
+  and review history.
 
-Regression coverage includes mocked OpenRouter requests, multi-tool/multi-turn messages, reasoning continuity, invalid keys/credits/configuration, rate limits, 5xx and network failures, zero prices and spending reservations; real SDK subprocess startup/disconnect/reconnect, unsupported/schema-invalid tools, stale Studio IDs, serialized writes and uncertain timeouts; scheduler concurrency, cancellation/deadlines, bounded retries/delegation, restart recovery, single-worker ownership, repeatable migrations and SQLite persistence. The existing delegation → approval → SDK write → readback → independent Tester → user review integration remains covered.
+## Verification status
 
-A focused browser check (`scripts/reliability-smoke.mjs`) uses a separately isolated real worker/database, a synthetic key and no inference requests. It checks provider settings/key privacy, assignments, concurrency configuration, actual queued-to-failed missing-key progress/error reporting, agent model controls, mobile overflow and browser exceptions. It refuses a production data directory.
-
-The first expanded-suite run exposed test-harness contention: six SDK cases exceeded the default five-second test deadline, and a child-worker test timed out while loading the whole graph. The harness now limits parallel test files to two, gives SDK integration cases an appropriate deadline, and tests the worker ownership guard directly. Assertions were retained. Subsequent full-suite results are recorded in the delivery report; no failed run is presented as a success.
-
-## Final verification results (2026-11-03)
-
-| Check                                                                                                                                            | Result                                                                                                                                                                                                                                                            |
-| ------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm test`                                                                                                                                       | 58 tests passed across 9 files; 0 failed in the final full-suite run.                                                                                                                                                                                             |
-| Follow-up affected-suite rerun after adding stale-edit protection: `npm test -- tests/mcp.test.ts tests/workflow.test.ts tests/features.test.ts` | 24 passed across 3 files, including the additional stale-edit regression. The repository now contains 59 tests.                                                                                                                                                   |
-| Restart/ownership regression check: `npm test -- tests/runtime-audit.test.ts`                                                                    | 10 passed, including interrupted inference, cancellation recovery and native cross-process ownership locking.                                                                                                                                                     |
-| `npm run typecheck`                                                                                                                              | Passed after the final backend changes.                                                                                                                                                                                                                           |
-| `npm run build`                                                                                                                                  | Passed after implementation; optimized production compilation, TypeScript and static generation completed.                                                                                                                                                        |
-| `FORGE_DATA_DIR=/tmp/forge-audit-delivery node scripts/reliability-smoke.mjs` against production Next + isolated worker                          | Passed: manual provider/key save/reload/removal privacy, recommended assignments, concurrency settings, real queued-to-failed task progress, visible missing-key error and retry controls, agent model options, focused mobile layouts and no browser exceptions. |
-| Real OpenRouter inference and live Roblox Studio E2E                                                                                             | Not run: no configured inference credentials or live Studio instance. No successful live integration is claimed.                                                                                                                                                  |
-
-Earlier expanded runs had the test-harness timeouts described above. The focused browser check also caught the task-detail collapse bug; that bug was fixed and the check now passes. No known failing check remains. Longer historical screenshot matrices were not repeated; focused changed-flow checks were used.
+`npm run typecheck`, `npm test` and `npm run build` pass on this build machine.
+The test suite uses real child-process JSON-RPC fixtures and the actual MCP SDK
+protocol; it does not call paid Codex inference and is not a live Roblox
+playtest. Chromium could not run reliably under Termux/proot, so browser smoke
+checks are not claimed as passing here.
 
 ## Remaining limits
 
-No OpenRouter key, NVIDIA key or running Studio MCP process is configured on this Linux machine. Real paid inference, a real Windows/macOS subprocess launch, live Roblox place changes and live playtests cannot be reported as verified. Automated provider requests are mocked; MCP tests use the actual SDK with explicit protocol fixtures. Public catalog retrieval requires no inference credential and was checked live.
-
-Cancellation cannot reverse a mutation already sent to Studio. Inspect ambiguous effects and reconcile them in Reviews; use Studio Undo/saved place versions as appropriate. Forge does not invent rollback. Pricing and availability are provider-controlled; reservations and endpoint price ceilings are conservative application controls, and provider account/key limits remain the final billing boundary. Oversized conversations fail visibly and need a narrower follow-up or a larger supported context limit. Unknown Studio tools remain denied until explicitly reviewed for role permissions.
+No live Codex credentials or Roblox Studio instance are configured on this
+machine. Real paid inference, live place edits and playtests remain environment
+dependent. Codex token usage is reported, but dollar cost is not; OpenAI billing
+is authoritative. Syntra cannot roll back a local edit or Studio mutation.
+Inspect the stored diff/evidence or use Git/Studio recovery before retrying.

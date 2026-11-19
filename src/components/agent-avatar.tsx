@@ -6,6 +6,7 @@ import {
   Mountain,
   Scale,
   ShieldCheck,
+  SquareTerminal,
 } from "lucide-react";
 import { roles, type Role } from "@/lib/roles";
 const icons = {
@@ -16,6 +17,7 @@ const icons = {
   Scenic: Mountain,
   Balance: Scale,
   Tester: ShieldCheck,
+  Codex: SquareTerminal,
 };
 export function Avatar({
   name,

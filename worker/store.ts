@@ -5,9 +5,11 @@ import { resolve } from "node:path";
 import { randomUUID, randomBytes } from "node:crypto";
 import { roles } from "../src/lib/roles";
 import { migrateFeatures } from "./migrations";
-import { nvidiaAgentModels } from "../src/lib/model-presets";
+import {
+  codexAgentModel,
+  codexAgentModels,
+} from "../src/lib/model-presets";
 import { redact, publicData, OperationError } from "./errors";
-import { defaultAgentModel, providerStatus } from "./provider";
 export const dataDir = resolve(process.env.FORGE_DATA_DIR || ".data");
 mkdirSync(dataDir, { recursive: true, mode: 0o700 });
 const secretPath = resolve(dataDir, "worker.secret");
@@ -50,6 +52,14 @@ export const defaults: Record<string, unknown> = {
   studioTools: [],
   pricing: {},
   maxSteps: 30,
+  codexProjectRoot: process.env.CODEX_PROJECT_ROOT || process.cwd(),
+  codexSandbox: "workspace-write",
+  codexDefaultModel:
+    process.env.CODEX_MODEL ||
+    (codexAgentModel as string),
+  codexNetworkAccess: false,
+  codexAutoApprove: false,
+  codexAccount: null,
 };
 for (const [key, value] of Object.entries(defaults))
   db.prepare("INSERT OR IGNORE INTO settings VALUES (?,?)").run(
@@ -59,18 +69,22 @@ for (const [key, value] of Object.entries(defaults))
 for (const [name, r] of Object.entries(roles))
   db.prepare(
     "INSERT OR IGNORE INTO agents (name,model,prompt) VALUES (?,?,?)",
-  ).run(name, defaultAgentModel(name), r.brief);
-// Migrate only the old built-in NVIDIA assignments. User prompts and custom
-// assignments survive; no running conversation is rewritten.
-if (!get("openRouterMigrationV2") && providerStatus().id === "openrouter") {
+  ).run(
+    name,
+    codexAgentModels[name as keyof typeof codexAgentModels]?.model ||
+      codexAgentModel,
+    r.brief,
+  );
+// One-time Codex-only migration: every agent now runs through the app-server.
+// Prompts and non-model settings are preserved.
+if (!get("codexOnlyMigrationV1")) {
   db.transaction(() => {
-    for (const [name, preset] of Object.entries(nvidiaAgentModels))
-      db.prepare("UPDATE agents SET model=? WHERE name=? AND model=?").run(
-        defaultAgentModel(name),
-        name,
+    for (const [name, preset] of Object.entries(codexAgentModels))
+      db.prepare("UPDATE agents SET model=? WHERE name=?").run(
         preset.model,
+        name,
       );
-    set("openRouterMigrationV2", true);
+    set("codexOnlyMigrationV1", true);
   })();
 }
 export function get<T = any>(key: string): T {
@@ -156,7 +170,7 @@ export function addTask(
 export function spent() {
   const totals = db
     .prepare(
-      "SELECT COALESCE(SUM(cost),0) AS cost,COALESCE(SUM(reserved),0) AS reserved,SUM(CASE WHEN cost IS NULL THEN 1 ELSE 0 END) AS unpriced,COALESCE(SUM(input_tokens),0) AS inputTokens,COALESCE(SUM(output_tokens),0) AS outputTokens,COALESCE(SUM(CASE WHEN provider='nvidia' THEN input_tokens ELSE 0 END),0) AS nimInputTokens,COALESCE(SUM(CASE WHEN provider='nvidia' THEN output_tokens ELSE 0 END),0) AS nimOutputTokens FROM usage",
+      "SELECT COALESCE(SUM(cost),0) AS cost,COALESCE(SUM(reserved),0) AS reserved,SUM(CASE WHEN cost IS NULL THEN 1 ELSE 0 END) AS unpriced,COALESCE(SUM(input_tokens),0) AS inputTokens,COALESCE(SUM(output_tokens),0) AS outputTokens FROM usage",
     )
     .get() as any;
   return {
@@ -253,7 +267,13 @@ export function snapshot() {
       .all(),
     spend: spent(),
     settings,
-    keyConfigured: providerStatus().configured,
-    provider: providerStatus(),
+    keyConfigured: Boolean(get("codexAccount")),
+    provider: {
+      id: "codex",
+      label: "OpenAI Codex app-server",
+      configured: Boolean(get("codexAccount")),
+      keySource: get("codexAccount") ? "saved" : "none",
+      costTracking: "token-only",
+    },
   });
 }

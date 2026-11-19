@@ -511,8 +511,7 @@ export default function AgentWorkspace({
                   <p>
                     {(usage?.inputTokens || 0).toLocaleString()} input tokens ·{" "}
                     {(usage?.outputTokens || 0).toLocaleString()} output tokens
-                    · ${(usage?.cost || 0).toFixed(4)} recorded · $
-                    {(usage?.reserved || 0).toFixed(4)} reserved
+                    · Codex app-server
                   </p>
                 );
               })()}
@@ -520,6 +519,7 @@ export default function AgentWorkspace({
             <AgentForm
               key={`${agent.name}:${agent.model}`}
               agent={agent}
+              codexModels={data.codex?.models || []}
               busy={busy}
               save={(b) => void act("agents", b)}
             />

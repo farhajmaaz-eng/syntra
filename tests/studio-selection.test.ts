@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import {
   mkdtempSync,
   rmSync,
@@ -13,43 +13,22 @@ import { resolve } from "node:path";
 import Database from "better-sqlite3";
 const dir = mkdtempSync(resolve(tmpdir(), "forge-selection-"));
 process.env.FORGE_DATA_DIR = dir;
-process.env.MODEL_PROVIDER = "openrouter";
-delete process.env.OPENROUTER_API_KEY;
-vi.mock("../worker/model", () => ({
-  completion: vi.fn(async (a: any, t: any, m: any[]) => {
-    if (!m.some((x) => x.role === "tool" && x.tool_call_id === "fresh-read"))
-      return {
-        role: "assistant",
-        content: null,
-        tool_calls: [
-          {
-            id: "fresh-read",
-            type: "function",
-            function: {
-              name: "script_read",
-              arguments: '{"path":"game.ServerScriptService.Main"}',
-            },
-          },
-        ],
-      };
-    return {
-      role: "assistant",
-      content: "Inspected the new target without replaying prior changes.",
-    };
-  }),
-  refreshModels: vi.fn(),
-}));
+process.env.CODEX_APP_SERVER_COMMAND = process.execPath;
+process.env.CODEX_APP_SERVER_ARGS = JSON.stringify([
+  resolve("tests/codex-fixture.mjs"),
+]);
+const calls = (value: any[]) =>
+  `FIXTURE_CALLS_B64:${Buffer.from(JSON.stringify(value)).toString("base64")}`;
 const store = await import("../worker/store");
 const { db, set, get, task } = store;
 const { previewStudioSwitch, confirmStudioSwitch } =
   await import("../worker/studio-selection");
 const { previewWorkspaceReset, confirmWorkspaceReset } =
   await import("../worker/workspace-reset");
-const { saveProvider, providerStatus, providerKey } =
-  await import("../worker/provider");
 const { studio, studioInstances, modelToolSchema } =
   await import("../worker/mcp");
 const runtime = await import("../worker/runtime");
+const { codex } = await import("../worker/codex");
 const oldId = "f6a42404-67b3-4ade-b58b-c6b30f3e2753",
   newId = "6465ed97-8651-49fb-8de5-853936ddf645";
 let available: any[];
@@ -87,6 +66,9 @@ beforeEach(async () => {
   studio.client = null;
   studio.tools = [];
   for (const table of [
+    "codex_events",
+    "codex_turns",
+    "codex_sessions",
     "pitch_versions",
     "assets",
     "telemetry_snapshots",
@@ -146,9 +128,16 @@ beforeEach(async () => {
     { id: newId, name: "My reopened game", placeId: "123", universeId: "456" },
   ];
 });
+beforeAll(async () => {
+  set("codexProjectRoot", dir);
+  set("codexAutoApprove", true);
+  await codex.ensureStarted();
+  await codex.loginApiKey("sk-fixture-codex-key-1234567890");
+});
 afterAll(async () => {
   runtime.abortAll();
   await idle();
+  codex.shutdown();
   studio.client = null;
   studio.tools = [];
   db.close();
@@ -383,6 +372,15 @@ it("executes a queued task only against the confirmed new target and never repla
       },
     },
   ];
+  db.prepare("UPDATE tasks SET instructions=? WHERE id='task'").run(
+    `${calls([
+      {
+        tool: "script_read",
+        arguments: { path: "game.ServerScriptService.Main" },
+        callId: "fresh-read",
+      },
+    ])} Inspect the new target without replaying prior changes.`,
+  );
   set("paused", false);
   for (let i = 0; i < 8 && task("task").status !== "completed"; i++) {
     await runtime.tick();
@@ -455,9 +453,6 @@ it("requires typed reset confirmation and backs up connection state before clear
   ).toBe(newId);
 });
 it("fully resets local data and credentials with a private recoverable backup and no env fallback", async () => {
-  const fake = "test-private-key-never-sent-to-network";
-  saveProvider({ provider: "openrouter", apiKey: fake });
-  process.env.OPENROUTER_API_KEY = "environment-key-never-sent-to-network";
   mkdirSync(resolve(dir, "assets"), { recursive: true });
   writeFileSync(resolve(dir, "assets", "test.txt"), "private asset");
   const p = previewWorkspaceReset({ scope: "everything" }, new Set());
@@ -483,23 +478,17 @@ it("fully resets local data and credentials with a private recoverable backup an
       n: 0,
     });
   expect(db.prepare("SELECT COUNT(*) AS n FROM agents").get()).toEqual({
-    n: 7,
+    n: 8,
   });
-  expect(providerStatus().configured).toBe(false);
-  expect(providerKey()).toBe("");
   expect(get("paused")).toBe(true);
   expect(get("mcpCommand")).toBe("");
   expect(existsSync(resolve(dir, "assets", "test.txt"))).toBe(false);
   expect(
     readFileSync(resolve(dir, out.backup, "assets", "test.txt"), "utf8"),
   ).toBe("private asset");
-  expect(
-    readFileSync(resolve(dir, out.backup, "provider-credentials.json"), "utf8"),
-  ).toContain(fake);
   expect(statSync(resolve(dir, out.backup, "forge.sqlite")).mode & 0o777).toBe(
     0o600,
   );
-  delete process.env.OPENROUTER_API_KEY;
 });
 it("rejects a reset preview after work or configuration changes", async () => {
   const p = previewWorkspaceReset({ scope: "everything" }, new Set());
@@ -518,10 +507,20 @@ it("rejects a reset preview after work or configuration changes", async () => {
 });
 
 it("cannot reuse verification evidence from the previous pinned session", async () => {
-  const { completion } = await import("../worker/model");
   db.prepare(
-    "UPDATE tasks SET agent='Tester',status='queued',messages='[]' WHERE id='task'",
-  ).run();
+    "UPDATE tasks SET agent='Tester',status='queued',instructions=? WHERE id='task'",
+  ).run(
+    `${calls([
+      {
+        tool: "verify",
+        arguments: {
+          passed: true,
+          evidence:
+            "Trying to reuse an earlier session without current evidence",
+        },
+      },
+    ])} Try to verify.`,
+  );
   for (const [id, tool] of [
     ["old-play", "start_stop_play"],
     ["old-console", "get_console_output"],
@@ -530,16 +529,6 @@ it("cannot reuse verification evidence from the previous pinned session", async 
       "INSERT INTO tool_calls(id,task_id,tool,args,status,result,studio_id,pin_revision) VALUES (?,'task',?,'{}','done','{}',?,0)",
     ).run(id, tool, oldId);
   await confirm(await preview());
-  vi.mocked(completion).mockImplementationOnce(async () => ({
-    role: "assistant",
-    content: null,
-    tool_calls: [
-      nativeCall("new-verdict", "verify", {
-        passed: true,
-        evidence: "Trying to reuse an earlier session without current evidence",
-      }),
-    ],
-  }));
   set("paused", false);
   for (let i = 0; i < 3; i++) {
     db.prepare("UPDATE tasks SET next_at=0 WHERE id='task'").run();
@@ -547,7 +536,7 @@ it("cannot reuse verification evidence from the previous pinned session", async 
     await idle();
   }
   expect(task("task").status).toBe("failed");
-  expect(task("task").error).toContain("Verification requires");
+  expect(task("task").error).toMatch(/Verification requires|verify verdict/i);
   expect(task("task").result).not.toContain("VERIFIED:");
   set("paused", true);
 });

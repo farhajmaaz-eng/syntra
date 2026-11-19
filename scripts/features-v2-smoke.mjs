@@ -242,7 +242,7 @@ try {
   );
 
   // This database is explicitly isolated above. Seed a producing task's artifact
-  // to exercise real review mutations without making a paid model call.
+  // to exercise real review mutations without making a paid Codex call.
   const db = new Database(resolve(dataDir, "forge.sqlite"));
   const artifactId = `browser-review-artifact-${Date.now()}`;
   db.prepare(
@@ -344,6 +344,7 @@ try {
           "/chat",
           "/team",
           "/tasks",
+          "/codex",
           "/games",
           "/reviews",
           "/market",
@@ -358,6 +359,7 @@ try {
           "/chat",
           "/team",
           "/tasks",
+          "/codex",
           "/games",
           "/reviews",
           "/market",

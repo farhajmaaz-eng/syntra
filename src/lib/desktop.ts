@@ -54,18 +54,14 @@ export function downloadDiagnostics(data: any) {
       status: data?.settings.studioStatus || "unknown",
       tools: data?.settings.studioTools?.length || 0,
     },
-    provider: {
-      id: data?.provider?.id,
-      keyConfigured: !!data?.keyConfigured,
-      costTracking: data?.provider?.costTracking,
-    },
-    budget: {
-      cap: data?.settings.cap,
-      spent: data?.spend.cost,
-      reserved: data?.spend.reserved,
-      unpricedCalls: data?.spend.unpriced,
-      nvidiaInputTokens: data?.spend.nimInputTokens,
-      nvidiaOutputTokens: data?.spend.nimOutputTokens,
+    codex: {
+      running: !!data?.codex?.running,
+      signedIn: !!data?.codex?.account,
+      accountType: data?.codex?.account?.type || null,
+      sandbox: data?.codex?.sandbox || null,
+      sessions: data?.codexSessions?.length || 0,
+      inputTokens: data?.codexUsage?.inputTokens || 0,
+      outputTokens: data?.codexUsage?.outputTokens || 0,
     },
     agents: (data?.agents || []).map((a: any) => ({
       name: a.name,

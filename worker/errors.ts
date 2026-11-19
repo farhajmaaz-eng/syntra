@@ -1,4 +1,3 @@
-import { providerKey } from "./provider";
 export class OperationError extends Error {
   constructor(
     message: string,
@@ -8,39 +7,28 @@ export class OperationError extends Error {
     super(message);
   }
 }
-export function redact(value: unknown): string {
-  let text = value instanceof Error ? value.message : String(value);
-  for (const key of [
-    process.env.OPENROUTER_API_KEY,
-    process.env.NVIDIA_API_KEY,
-    safeKey("openrouter"),
-    safeKey("nvidia"),
-  ])
-    if (key) text = text.split(key).join("[REDACTED]");
+
+function scrub(text: string) {
   return text
-    .replace(/\b(?:sk-or-v1-|nvapi-)[A-Za-z0-9._-]+/g, "[REDACTED]")
+    .split(process.env.CODEX_API_KEY || "\u0000")
+    .join("[REDACTED]")
+    .replace(/\b(?:sk-or-v1-|nvapi-|sk-)[A-Za-z0-9._-]{16,}/g, "[REDACTED]")
     .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [REDACTED]");
 }
-function safeKey(id: "openrouter" | "nvidia") {
-  try {
-    return providerKey(id);
-  } catch {
-    return "";
-  }
+
+export function redact(value: unknown): string {
+  return scrub(value instanceof Error ? value.message : String(value));
 }
+
 export function publicData(value: any): any {
-  const keys = [
-    process.env.OPENROUTER_API_KEY,
-    process.env.NVIDIA_API_KEY,
-    safeKey("openrouter"),
-    safeKey("nvidia"),
-  ].filter(Boolean) as string[];
+  const keys = [process.env.CODEX_API_KEY].filter(Boolean) as string[];
   function walk(v: any): any {
     if (typeof v === "string") {
-      for (const key of keys) v = v.split(key).join("[REDACTED]");
-      return v
-        .replace(/\b(?:sk-or-v1-|nvapi-)[A-Za-z0-9._-]+/g, "[REDACTED]")
+      let text = v
+        .replace(/\b(?:sk-or-v1-|nvapi-|sk-)[A-Za-z0-9._-]{16,}/g, "[REDACTED]")
         .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [REDACTED]");
+      for (const key of keys) text = text.split(key).join("[REDACTED]");
+      return text;
     }
     if (Array.isArray(v)) return v.map(walk);
     if (v && typeof v === "object")

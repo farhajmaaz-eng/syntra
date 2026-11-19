@@ -11,6 +11,7 @@ for (const path of [
   "/chat",
   "/team",
   "/tasks",
+  "/codex",
   "/games",
   "/reviews",
   "/library",

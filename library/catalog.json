@@ -464,13 +464,13 @@
       "Frame",
       "Tester"
     ],
-    "summary": "Choose teaching techniques that support the experience and the player\u2019s immediate goal.",
+    "summary": "Choose teaching techniques that support the experience and the player’s immediate goal.",
     "do": [
       "Use timely feedback and simple early tasks.",
       "Test with someone who has never seen the game."
     ],
     "avoid": [
-      "Do not assume the developer\u2019s knowledge is obvious to newcomers.",
+      "Do not assume the developer’s knowledge is obvious to newcomers.",
       "Do not block progress with unclear instructions."
     ],
     "diagram": "workflow"
@@ -612,5 +612,1333 @@
       "Do not judge success only by launch-day attention."
     ],
     "diagram": "workflow"
+  },
+  {
+    "path": "scripting/security/security-tactics",
+    "title": "Security and cheat mitigation tactics",
+    "category": "Security",
+    "agents": [
+      "Architect",
+      "Builder",
+      "Tester"
+    ],
+    "summary": "The following content covers various concepts and tactics to improve security and mitigate cheating in your Roblox games. It's highly recommended that all developers read through these to ensure that your games are secure and fair for all users. Check the sidebar for additional…",
+    "do": [],
+    "avoid": [],
+    "diagram": "security",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "scripting",
+      "security",
+      "security-tactics"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "scripting/security/server-side-detection",
+    "title": "Server-side detection and consequencing",
+    "category": "Security",
+    "agents": [
+      "Architect",
+      "Builder",
+      "Tester"
+    ],
+    "summary": "The following content covers various concepts and tactics to improve security and mitigate cheating in your Roblox games. It's highly recommended that all developers read through these to ensure that your games are secure and fair for all users. Check the sidebar for additional…",
+    "do": [],
+    "avoid": [],
+    "diagram": "security",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "scripting",
+      "security",
+      "server-side-detection"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "scripting/security/network-ownership",
+    "title": "Network ownership, movement validation, and physics",
+    "category": "Security",
+    "agents": [
+      "Architect",
+      "Builder",
+      "Tester"
+    ],
+    "summary": "The following content covers various concepts and tactics to improve security and mitigate cheating in your Roblox games. It's highly recommended that all developers read through these to ensure that your games are secure and fair for all users. Check the sidebar for additional…",
+    "do": [],
+    "avoid": [],
+    "diagram": "security",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "scripting",
+      "security",
+      "network-ownership"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "projects/server-authority/index",
+    "title": "Server authority model",
+    "category": "Security",
+    "agents": [
+      "Lead",
+      "Architect",
+      "Builder",
+      "Tester"
+    ],
+    "summary": "In a server authority model, the server is the single source of truth for the entire game state, and clients are only trusted to report their own inputs. This architecture is the core netcode foundation of a fair, competitive game because it prevents entire classes of cheating…",
+    "do": [],
+    "avoid": [],
+    "diagram": "security",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "projects",
+      "server-authority"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "projects/server-authority/techniques",
+    "title": "Server authority techniques",
+    "category": "Security",
+    "agents": [
+      "Architect",
+      "Builder",
+      "Tester"
+    ],
+    "summary": "This guide outlines various techniques for creating high-quality, smooth, multiplayer games using the server authority model(./index.md).",
+    "do": [],
+    "avoid": [],
+    "diagram": "security",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "projects",
+      "server-authority",
+      "techniques"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "projects/cross-platform",
+    "title": "Cross-platform development",
+    "category": "Performance",
+    "agents": [
+      "Lead",
+      "Architect",
+      "Frame",
+      "Tester"
+    ],
+    "summary": "import BetaAlert from '../includes/beta-features/beta-alert.md'",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "projects",
+      "cross-platform"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "projects/data-model",
+    "title": "Data model",
+    "category": "Data & architecture",
+    "agents": [
+      "Lead",
+      "Architect",
+      "Builder"
+    ],
+    "summary": "Every place is represented by a data model, a hierarchy of objects that describe everything about the place. The data model contains all objects that make up the 3D world, such as parts, terrain, lighting, and other environmental elements. It also contains objects that can…",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "projects",
+      "data-model"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "projects/client-server",
+    "title": "Client-server runtime",
+    "category": "Data & architecture",
+    "agents": [
+      "Architect",
+      "Builder",
+      "Tester"
+    ],
+    "summary": "When a game runs, Roblox copies a version of the \"edit\" data model that you built and published from Studio and runs it on Roblox servers as the \"runtime\" data model.",
+    "do": [],
+    "avoid": [],
+    "diagram": "security",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "projects",
+      "client-server"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "scripting/module",
+    "title": "Reuse code",
+    "category": "Luau & networking",
+    "agents": [
+      "Architect",
+      "Builder"
+    ],
+    "summary": "After creating a few scripts, it's never long before you want to reuse some code between them. Depending on location(./locations.md), Class.ModuleScript|ModuleScripts let you reuse code between scripts on different sides of the client-server boundary or the same side of the…",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "scripting",
+      "module"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "scripting/services",
+    "title": "Services",
+    "category": "Luau & networking",
+    "agents": [
+      "Architect",
+      "Builder"
+    ],
+    "summary": "In Reuse code(module.md), you might have noticed frequent use of the game:GetService() method. Roblox services let you access the built-in features of the engine, like selling in-game items, enabling chat, playing sounds, animating objects, and managing instances.",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "scripting",
+      "services"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "scripting/attributes",
+    "title": "Properties and attributes",
+    "category": "Luau & networking",
+    "agents": [
+      "Architect",
+      "Builder"
+    ],
+    "summary": "Making games interactive often means manipulating object properties and attributes:",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "scripting",
+      "attributes"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "scripting/events/deferred",
+    "title": "Deferred engine events",
+    "category": "Luau & networking",
+    "agents": [
+      "Architect",
+      "Builder",
+      "Tester"
+    ],
+    "summary": "The Class.Workspace.SignalBehavior property controls whether event handlers are fired immediately or deferred. The Enum.SignalBehavior.Deferred option is recommended which helps improve the performance and correctness of the engine. The event handlers for deferred events are…",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "scripting",
+      "events",
+      "deferred"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "scripting/events/bindable",
+    "title": "Bindable events and callbacks",
+    "category": "Luau & networking",
+    "agents": [
+      "Architect",
+      "Builder"
+    ],
+    "summary": "Class.BindableEvent and Class.BindableFunction objects let you bind behaviors between scripts on the same side of the client-server(../../projects/client-server.md) boundary and communicate a specific desired outcome for in-game actions.",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "scripting",
+      "events",
+      "bindable"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "scripting/scheduler",
+    "title": "Schedule code",
+    "category": "Luau & networking",
+    "agents": [
+      "Architect",
+      "Builder",
+      "Tester"
+    ],
+    "summary": "Scheduling code is useful in many situations, such as ensuring code executes after a specific action or cycle has completed, or delaying code for a specific duration of time. You can use the Library.task library to optimize Roblox's task…",
+    "do": [],
+    "avoid": [],
+    "diagram": "performance",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "scripting",
+      "scheduler"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "scripting/multithreading",
+    "title": "Parallel Luau",
+    "category": "Luau & networking",
+    "agents": [
+      "Architect",
+      "Builder",
+      "Tester"
+    ],
+    "summary": "With the Parallel Luau programming model, you can run code on multiple threads simultaneously, which can improve the performance of your game. As you expand your game with more content, you can adopt this model to help maintain the performance and safety of your Luau scripts.",
+    "do": [],
+    "avoid": [],
+    "diagram": "performance",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "scripting",
+      "multithreading"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "scripting/debounce",
+    "title": "Debounce patterns",
+    "category": "Luau & networking",
+    "agents": [
+      "Builder",
+      "Frame",
+      "Tester"
+    ],
+    "summary": "A debounce pattern is a coding technique that prevents a function from running too many times or an input from triggering multiple times. The following scripting scenarios illustrate debounce as a best practice.",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "scripting",
+      "debounce"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "luau/type-checking",
+    "title": "Type checking",
+    "category": "Luau & networking",
+    "agents": [
+      "Architect",
+      "Builder",
+      "Tester"
+    ],
+    "summary": "For the latest and most complete type checking documentation, see here(https://luau.org/typecheck).",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "luau",
+      "type-checking"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "luau/tables",
+    "title": "Tables",
+    "category": "Luau & networking",
+    "agents": [
+      "Builder",
+      "Architect"
+    ],
+    "summary": "The table data type can store multiple values of any type that isn't nil, including booleans(./booleans.md), numbers(./numbers.md), strings(./strings.md), functions(./functions.md), and other tables. Construct tables with curly braces ({}):",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "luau",
+      "tables"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "luau/metatables",
+    "title": "Metatables",
+    "category": "Luau & networking",
+    "agents": [
+      "Builder",
+      "Architect"
+    ],
+    "summary": "Metatables allow tables to become more powerful than before. They are attached to data and contain values called metamethods. Metamethods are fired when a certain action is used with the datum that it is attached to.",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "luau",
+      "metatables"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "performance-optimization/test-on-hardware",
+    "title": "Test on hardware",
+    "category": "Performance",
+    "agents": [
+      "Tester",
+      "Frame",
+      "Builder"
+    ],
+    "summary": "Studio runs the client and server together on your development machine, which is typically far more powerful than the devices your players use. This creates blind spots with the devices your player base typically uses:",
+    "do": [],
+    "avoid": [],
+    "diagram": "performance",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "performance-optimization",
+      "test-on-hardware"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "performance-optimization/scene-analysis",
+    "title": "Scene Analysis",
+    "category": "Performance",
+    "agents": [
+      "Tester",
+      "Scenic",
+      "Architect"
+    ],
+    "summary": "The Scene Analysis tool provides a suite of views in Roblox Studio that give you at-a-glance comparative information about how your client and server scenes are put together, what resources they're using, and which instances are responsible for that resource usage. Scene…",
+    "do": [],
+    "avoid": [],
+    "diagram": "performance",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "performance-optimization",
+      "scene-analysis"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "performance-optimization/monitor",
+    "title": "Monitor performance",
+    "category": "Performance",
+    "agents": [
+      "Tester",
+      "Builder",
+      "Lead"
+    ],
+    "summary": "The Performance Dashboard(../production/analytics/performance.md) is the best way to monitor the performance of your published games. The two tabs include real-time performance information for both clients and servers, and you can use date ranges to track the impact of your…",
+    "do": [],
+    "avoid": [],
+    "diagram": "performance",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "performance-optimization",
+      "monitor"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "studio/optimization/scriptprofiler",
+    "title": "Script Profiler",
+    "category": "Performance",
+    "agents": [
+      "Tester",
+      "Builder"
+    ],
+    "summary": "Script Profiler is a tool within the Developer Console(../../studio/developer-console.md) that allows you to record profiling sessions of all running scripts and view their CPU time costs with custom recording and display settings. It can record all types of function calls,…",
+    "do": [],
+    "avoid": [],
+    "diagram": "performance",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "studio",
+      "optimization",
+      "scriptprofiler"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "studio/optimization/memory-usage",
+    "title": "Memory usage",
+    "category": "Performance",
+    "agents": [
+      "Tester",
+      "Builder",
+      "Scenic"
+    ],
+    "summary": "import OpeningSteps from '../../includes/developer-console/opening-developer-console.md'",
+    "do": [],
+    "avoid": [],
+    "diagram": "performance",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "studio",
+      "optimization",
+      "memory-usage"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "studio/debugging",
+    "title": "Debugging",
+    "category": "Testing & release",
+    "agents": [
+      "Tester",
+      "Builder",
+      "Lead"
+    ],
+    "summary": "Studio offers many debugging tools and workflows commonly found in Integrated Development Environments (IDEs). These help you inspect and resolve errors in scripts as they run.",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "studio",
+      "debugging"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "studio/device-simulator",
+    "title": "Device Simulator",
+    "category": "Testing & release",
+    "agents": [
+      "Tester",
+      "Frame"
+    ],
+    "summary": "Device Simulator is a toolbar in Roblox Studio that previews how your experience looks and behaves on a device you don't have in front of you. It simulates a device's screen dimensions, pixel density, on-screen keyboard, and platform. The controls sit in a toolbar above the 3D…",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "studio",
+      "device-simulator"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "studio/network-simulator",
+    "title": "Network Simulator",
+    "category": "Testing & release",
+    "agents": [
+      "Tester",
+      "Builder",
+      "Architect"
+    ],
+    "summary": "Network Simulator is a Studio testing tool that adds latency, jitter, and packet loss to the connection between a playtest client and server. Use it to reproduce the conditions that players encounter on wired, Wi-Fi, and mobile connections without configuring an external…",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "studio",
+      "network-simulator"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "ui/position-and-size",
+    "title": "Position and size UI objects",
+    "category": "UI & accessibility",
+    "agents": [
+      "Frame",
+      "Tester"
+    ],
+    "summary": "Unless UI objects are under control of a layout structure(layout-structures) or a size modifier/constraint(../ui/size-modifiers.md), you have complete control over their position(position) and size(size). You can also set the Z‑index layering(zindex) order in which objects…",
+    "do": [],
+    "avoid": [],
+    "diagram": "ui",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "ui",
+      "position-and-size"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "ui/list-flex-layouts",
+    "title": "List and flex layouts",
+    "category": "UI & accessibility",
+    "agents": [
+      "Frame",
+      "Builder"
+    ],
+    "summary": "The Class.UIListLayout positions sibling Class.GuiObject|GuiObjects into horizontal rows or vertical columns within their parent container. Whenever you add or remove a sibling object, the layout adjusts accordingly.",
+    "do": [],
+    "avoid": [],
+    "diagram": "ui",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "ui",
+      "list-flex-layouts"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "ui/grid-table-layouts",
+    "title": "Grid and table layouts",
+    "category": "UI & accessibility",
+    "agents": [
+      "Frame",
+      "Builder"
+    ],
+    "summary": "In comparison to Class.UIListLayout, Class.UIGridLayout and Class.UITableLayout allow for more structured and organized layouts. These are most appropriate for interfaces like a shop inventory where each item can be presented in a grid of equally‑sized tiles, or items can be…",
+    "do": [],
+    "avoid": [],
+    "diagram": "ui",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "ui",
+      "grid-table-layouts"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "ui/appearance-modifiers",
+    "title": "UI appearance modifiers",
+    "category": "UI & accessibility",
+    "agents": [
+      "Frame",
+      "Builder",
+      "Tester"
+    ],
+    "summary": "import BetaAlert from '../includes/beta-features/beta-alert.md'",
+    "do": [],
+    "avoid": [],
+    "diagram": "ui",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "ui",
+      "appearance-modifiers"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "ui/rich-text",
+    "title": "Rich text markup",
+    "category": "UI & accessibility",
+    "agents": [
+      "Frame",
+      "Builder"
+    ],
+    "summary": "UI rich text utilizes simple markup tags to style sections of a string in bold, italics, underline, fill color, stroke variations, and more. You can apply styling tags to Class.TextLabel, Class.TextButton, and Class.TextBox objects.",
+    "do": [],
+    "avoid": [],
+    "diagram": "ui",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "ui",
+      "rich-text"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "ui/proximity-prompts",
+    "title": "Proximity prompts",
+    "category": "UI & accessibility",
+    "agents": [
+      "Frame",
+      "Builder",
+      "Tester"
+    ],
+    "summary": "Class.ProximityPrompt objects encourage user interaction to trigger an action when they approach in-game objects such as doors, light switches, and buttons. Using this object, you can:",
+    "do": [],
+    "avoid": [],
+    "diagram": "ui",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "ui",
+      "proximity-prompts"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "input/input-action-system",
+    "title": "Input Action System",
+    "category": "UI & accessibility",
+    "agents": [
+      "Frame",
+      "Builder",
+      "Tester"
+    ],
+    "summary": "import BetaAlert from '../includes/beta-features/beta-alert.md' import DefaultBindings from '../includes/default-bindings.md'",
+    "do": [],
+    "avoid": [],
+    "diagram": "ui",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "input",
+      "input-action-system"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "input/mouse-and-keyboard",
+    "title": "Mouse and keyboard input",
+    "category": "UI & accessibility",
+    "agents": [
+      "Frame",
+      "Builder",
+      "Tester"
+    ],
+    "summary": "A large percentage of Roblox sessions are played on devices with a mouse and keyboard, so it's important to support these inputs when designing a game for a wide audience.",
+    "do": [],
+    "avoid": [],
+    "diagram": "ui",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "input",
+      "mouse-and-keyboard"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "characters/character-controller-library/quick-start",
+    "title": "CCL quick start",
+    "category": "World building",
+    "agents": [
+      "Builder",
+      "Scenic",
+      "Tester"
+    ],
+    "summary": "import Enable from '../../includes/studio/character-controller.md'",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "characters",
+      "character-controller-library",
+      "quick-start"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "workspace/cframes",
+    "title": "CFrames",
+    "category": "World building",
+    "agents": [
+      "Builder",
+      "Scenic",
+      "Architect"
+    ],
+    "summary": "A Datatype.CFrame, short for Coordinate Frame, is a data type used to rotate and position 3D objects. As either an object property or a standalone unit, a Datatype.CFrame contains global X, Y, and Z coordinates as well as rotation data for each axis. In addition,…",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "workspace",
+      "cframes"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "workspace/raycasting",
+    "title": "Raycasting",
+    "category": "World building",
+    "agents": [
+      "Builder",
+      "Scenic",
+      "Tester"
+    ],
+    "summary": "At its most basic level, raycasting is the act of sending out an invisible ray from a Datatype.Vector3 point in a specific direction with a defined length. Once cast, you can detect if the ray hits a Class.BasePart or Class.Terrain cell.",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "workspace",
+      "raycasting"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "workspace/collisions",
+    "title": "Collisions",
+    "category": "World building",
+    "agents": [
+      "Builder",
+      "Scenic",
+      "Tester"
+    ],
+    "summary": "A collision occurs when two 3D objects come into contact within the 3D world. For customized collision handling, Class.BasePart has a set of collision events(collision-events) and collision filtering(collision-filtering) techniques, so you can control which physical assemblies…",
+    "do": [],
+    "avoid": [],
+    "diagram": "performance",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "workspace",
+      "collisions"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "environment/lighting",
+    "title": "Global lighting",
+    "category": "World building",
+    "agents": [
+      "Scenic",
+      "Frame"
+    ],
+    "summary": "The Class.Lighting service contains properties that you can adjust to update and customize the global lighting in a game. There are five categories of lighting properties:",
+    "do": [],
+    "avoid": [],
+    "diagram": "ui",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "environment",
+      "lighting"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "effects/particle-emitters",
+    "title": "Particle emitters",
+    "category": "World building",
+    "agents": [
+      "Scenic",
+      "Frame"
+    ],
+    "summary": "A Class.ParticleEmitter is an object that emits customizable 2D images (particles) into the world, useful for simulating special effects like fire, smoke, and sparks.",
+    "do": [],
+    "avoid": [],
+    "diagram": "ui",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "effects",
+      "particle-emitters"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "audio/objects",
+    "title": "Audio objects",
+    "category": "UI & accessibility",
+    "agents": [
+      "Frame",
+      "Builder",
+      "Scenic"
+    ],
+    "summary": "For example, every audio object conceptually falls into the following categories:",
+    "do": [],
+    "avoid": [],
+    "diagram": "ui",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "audio",
+      "objects"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "audio/effects",
+    "title": "Audio effects",
+    "category": "UI & accessibility",
+    "agents": [
+      "Frame",
+      "Builder",
+      "Scenic"
+    ],
+    "summary": "Audio effects non-destructively modify or enhance audio streams. You can apply these effects to make your audio more immersive within your game, such as using an Class.AudioEqualizer object to make rain sound muffled, Class.AudioCompressor object to control a sound's maximum…",
+    "do": [],
+    "avoid": [],
+    "diagram": "ui",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "audio",
+      "effects"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "animation/using",
+    "title": "Use animations",
+    "category": "World building",
+    "agents": [
+      "Builder",
+      "Frame",
+      "Scenic"
+    ],
+    "summary": "Once you have created an animation(../animation/editor.md), you need to use scripts to include them in your game. You can either play animations manually(play-animations-from-scripts) from scripts or replace default animations(replace-default-animations) for player characters.",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "animation",
+      "using"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "animation/events",
+    "title": "Animation events",
+    "category": "World building",
+    "agents": [
+      "Builder",
+      "Frame"
+    ],
+    "summary": "You can define animation event markers across the timeline span and use Class.AnimationTrack:GetMarkerReachedSignal()|GetMarkerReachedSignal() to detect those markers as the animation runs.",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "animation",
+      "events"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "players/teams",
+    "title": "Implement teams",
+    "category": "Data & architecture",
+    "agents": [
+      "Architect",
+      "Builder",
+      "Balance"
+    ],
+    "summary": "You can divide players in your game into multiple teams using the Class.Teams service. By configuring(add-teams) the Class.Teams service and assigning teams(assign-players-to-teams), players are automatically differentiated by their display…",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "players",
+      "teams"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "projects/teleport",
+    "title": "Teleport between places",
+    "category": "Data & architecture",
+    "agents": [
+      "Architect",
+      "Builder",
+      "Tester"
+    ],
+    "summary": "Many games are subdivided into multiple places(../production/publishing/publish-games-and-places.mdcreate-additional-places), such as a fantasy world with towns, castles, dungeons, and a vast forest. Use Class.TeleportService to teleport users between places, to different…",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "projects",
+      "teleport"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "projects/teleport-private-servers",
+    "title": "Teleport to private servers",
+    "category": "Data & architecture",
+    "agents": [
+      "Architect",
+      "Builder",
+      "Balance"
+    ],
+    "summary": "In addition to teleporting players between public servers, Class.TeleportService supports teleporting to private servers, which are servers restricted to specific players. There are two kinds of private servers you can teleport to:",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "projects",
+      "teleport-private-servers"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "cloud-services/memory-stores/best-practices",
+    "title": "Best practices for memory stores",
+    "category": "Data & architecture",
+    "agents": [
+      "Architect",
+      "Builder",
+      "Tester"
+    ],
+    "summary": "Use these practices to organize temporary data, distribute load, and respond to memory store issues.",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "cloud-services",
+      "memory-stores",
+      "best-practices"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "cloud-services/http-service",
+    "title": "In-game HTTP requests",
+    "category": "Data & architecture",
+    "agents": [
+      "Architect",
+      "Builder",
+      "Tester"
+    ],
+    "summary": "You can use Class.HttpService to send generic HTTP requests to third-party web services for use cases like analytics, data storage, or error logging. Class.HttpService also supports certain Open Cloud endpoints.",
+    "do": [],
+    "avoid": [],
+    "diagram": "security",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "cloud-services",
+      "http-service"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "cloud-services/cross-server-messaging",
+    "title": "Cross-server messaging",
+    "category": "Data & architecture",
+    "agents": [
+      "Architect",
+      "Builder",
+      "Tester"
+    ],
+    "summary": "Normally, the code within a game can only affect the server or clients that it's running on, but there may be situations where you want different servers to communicate with each other, including:",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "cloud-services",
+      "cross-server-messaging"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "production/game-design/analytics-essentials",
+    "title": "Analyze and experiment",
+    "category": "Economy & live ops",
+    "agents": [
+      "Lead",
+      "Balance",
+      "Tester"
+    ],
+    "summary": "Analytics provide a high level overview of your game's health and surface optimization opportunities. The highest level of analytics you can use to uncover these opportunities are called key performance indicators (KPIs). Three of the most prominent KPIs are:",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "production",
+      "game-design",
+      "analytics-essentials"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "production/analytics/engagement",
+    "title": "Engagement",
+    "category": "Economy & live ops",
+    "agents": [
+      "Lead",
+      "Balance"
+    ],
+    "summary": "1. Navigate to your Creations(https://create.roblox.com/dashboard/creations) page on Creator Dashboard and select your game. 1. In the Analytics menu on the left, select Engagement.",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "production",
+      "analytics",
+      "engagement"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "production/monetization/passes",
+    "title": "Passes",
+    "category": "Economy & live ops",
+    "agents": [
+      "Balance",
+      "Builder",
+      "Tester"
+    ],
+    "summary": "Passes let you charge users a one-time Robux fee to access special privileges inside your game, such as entry to a restricted area, an in-game avatar item, or a permanent power-up.",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "production",
+      "monetization",
+      "passes"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "production/monetization/private-servers",
+    "title": "Private servers",
+    "category": "Economy & live ops",
+    "agents": [
+      "Balance",
+      "Architect",
+      "Builder"
+    ],
+    "summary": "A private server is a subscription-based feature that allows a player to decide who can play a game with them. While private servers can be free, you can also use private servers as a method of monetization by charging players who want to access private servers a monthly Robux…",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "production",
+      "monetization",
+      "private-servers"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "production/monetization/subscriptions",
+    "title": "Subscriptions",
+    "category": "Economy & live ops",
+    "agents": [
+      "Balance",
+      "Builder",
+      "Tester"
+    ],
+    "summary": "Subscriptions within games let you offer users recurring benefits for a monthly fee. Subscriptions are similar to passes(./passes.md), but while the benefits of a pass are granted indefinitely, the benefits of a subscription are contingent on the user paying a monthly fee.",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "production",
+      "monetization",
+      "subscriptions"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "production/publishing/experience-icons",
+    "title": "Icons",
+    "category": "Economy & live ops",
+    "agents": [
+      "Lead",
+      "Frame",
+      "Balance"
+    ],
+    "summary": "A high-quality icon, in addition to a showcase thumbnail(thumbnails.md), is an important factor in helping users recognize your game and grow its brand. With prominent placement in various sections of the Home(https://www.roblox.com/home) page, it's recommended that the icon…",
+    "do": [],
+    "avoid": [],
+    "diagram": "ui",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "production",
+      "publishing",
+      "experience-icons"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "production/publishing/thumbnails",
+    "title": "Thumbnails",
+    "category": "Economy & live ops",
+    "agents": [
+      "Lead",
+      "Frame",
+      "Balance"
+    ],
+    "summary": "Thumbnails appear on Roblox's Home(https://www.roblox.com/home) page and at the top of your game's detail page, allowing you to showcase your game's features and announce updates or events.",
+    "do": [],
+    "avoid": [],
+    "diagram": "ui",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "production",
+      "publishing",
+      "thumbnails"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "production/publishing/descriptions",
+    "title": "Game descriptions",
+    "category": "Economy & live ops",
+    "agents": [
+      "Lead",
+      "Balance"
+    ],
+    "summary": "These guidelines are experimental and only meant for select creators. We do not recommend following these guidelines for all games.",
+    "do": [],
+    "avoid": [],
+    "diagram": "workflow",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "production",
+      "publishing",
+      "descriptions"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "production/publishing/adaptive-design",
+    "title": "Adaptive design guidelines",
+    "category": "UI & accessibility",
+    "agents": [
+      "Lead",
+      "Frame",
+      "Tester"
+    ],
+    "summary": "Adaptive design ensures your Roblox games look and feel great across various screen sizes, orientation, and input types. Moving beyond traditional device categories like mobile, desktop, and console, today's devices have far more dynamic capabilities, allowing for seamless…",
+    "do": [],
+    "avoid": [],
+    "diagram": "ui",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "production",
+      "publishing",
+      "adaptive-design"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "production/publishing/console-guidelines",
+    "title": "Console development guidelines",
+    "category": "UI & accessibility",
+    "agents": [
+      "Lead",
+      "Frame",
+      "Tester"
+    ],
+    "summary": "With 200M+ Xbox and PlayStation players, consoles present a major opportunity for you to attract more players. Compared to regular devices, designing for controllers and the 10-foot UI experience of consoles has some special guidelines that you can follow to help your game…",
+    "do": [],
+    "avoid": [],
+    "diagram": "ui",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "production",
+      "publishing",
+      "console-guidelines"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "chat/in-experience-text-chat",
+    "title": "Text chat overview",
+    "category": "Data & architecture",
+    "agents": [
+      "Architect",
+      "Builder",
+      "Tester"
+    ],
+    "summary": "When platform-integrated chat(./platform-integrated-chat.md) is enabled, custom chat must use Roblox's native systems, and message content isn't accessible in code.",
+    "do": [],
+    "avoid": [],
+    "diagram": "security",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "chat",
+      "in-experience-text-chat"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
+  },
+  {
+    "path": "chat/examples/rate-limit-public-text-inputs",
+    "title": "Rate-limited text inputs",
+    "category": "Data & architecture",
+    "agents": [
+      "Architect",
+      "Builder",
+      "Tester"
+    ],
+    "summary": "This example shows how to implement a rate limit of 1 minute on a text input field that allows players to post notes to a community bulletin board.",
+    "do": [],
+    "avoid": [],
+    "diagram": "security",
+    "kind": "official",
+    "level": "intermediate",
+    "tags": [
+      "chat",
+      "rate-limit-public-text-inputs"
+    ],
+    "source_note": "Auto-added from the official Creator Documentation pack. Use the live page for current limits and APIs."
   }
 ]

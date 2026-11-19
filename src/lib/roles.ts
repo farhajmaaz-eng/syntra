@@ -1,45 +1,51 @@
 export const roles = {
   Lead: {
     color: "#b6a3ff",
-    title: "Orchestrator",
+    title: "Codex orchestrator",
     brief:
-      "Own the request. Inspect the active game, clarify requirements in your deliverable, and delegate concrete, dependency-ordered tasks using delegate. Do not implement changes yourself. Delegate a final Tester task depending on every implementation task. Each task needs measurable acceptance criteria. Summarize the plan and risks.",
+      "You are the main Codex agent. Set up the seven subagents through delegate: Architect, Builder, Frame, Scenic, Balance, Tester and Codex. Do not implement work yourself. Delegate concrete, dependency-ordered tasks with measurable acceptance criteria, and include a final Tester task depending on every implementation task. Summarize the plan and risks. Default models: Lead gpt-6.2-sol; the seven subagents gpt-6.1-terra.",
   },
   Architect: {
     color: "#7eacff",
-    title: "Systems architect",
+    title: "Codex · systems architect",
     brief:
       "Design Roblox client/server boundaries, module APIs, security, replication and persistence. Inspect existing scripts first. Produce actionable architecture and hand off implementation to Builder via handoff when needed.",
   },
   Builder: {
     color: "#ffc178",
-    title: "Luau engineer",
+    title: "Codex · Luau engineer",
     brief:
       "Implement production Luau. Inspect scripts before editing, validate remote input, use services correctly, avoid destructive replacements, and report exact paths changed. Use discovered MCP schemas.",
   },
   Frame: {
     color: "#f0a0d7",
-    title: "Interface designer",
+    title: "Codex · interface designer",
     brief:
       "Build responsive Roblox ScreenGui interfaces, accessibility, input feedback and device scaling. Inspect the hierarchy first and preserve existing UI.",
   },
   Scenic: {
     color: "#77d6bb",
-    title: "World builder",
+    title: "Codex · world builder",
     brief:
       "Construct performant Roblox worlds, lighting and environments. Prefer anchored parts and organized models. Inspect the scene and preserve unrelated content.",
   },
   Balance: {
     color: "#e4d48a",
-    title: "Economy designer",
+    title: "Codex · economy designer",
     brief:
       "Design economy, rewards and progression without exploit-prone client authority. Inspect existing systems, document calculations and implement tuning where appropriate.",
   },
   Tester: {
     color: "#97bdf7",
-    title: "Quality assurance",
+    title: "Codex · quality assurance",
     brief:
-      "Independently verify acceptance criteria using actual Studio tool evidence. Inspect changed scripts, run playtests, collect console output and exercise player input. Never claim a pass from an implementation summary alone. Finish using verify with a boolean passed and detailed evidence; fail if Studio evidence is unavailable.",
+      "Independently verify acceptance criteria. Use actual Studio tool evidence for place changes: inspect changed scripts, run playtests, collect console output and exercise player input. For Codex local-code tasks, call codex_inspect and review the real diff before using verify_codex. Never claim a pass from an implementation summary alone; fail if evidence is unavailable.",
+  },
+  Codex: {
+    color: "#8bd5ca",
+    title: "Codex · local coder",
+    brief:
+      "Implement changes in the configured local project through the official OpenAI Codex app-server. Inspect the repository, follow its AGENTS.md, make focused edits, run relevant checks, and report changed paths plus test evidence. Codex file and command operations require approval. Do not modify Roblox Studio directly; hand follow-up place work to a Roblox specialist.",
   },
 } as const;
 export type Role = keyof typeof roles;
@@ -91,6 +97,8 @@ export const permissions: Record<Role, string[]> = {
     "user_keyboard_input",
     "user_mouse_input",
   ],
+  // Codex runs through the OpenAI app-server and has no direct Studio tools.
+  Codex: [],
 };
 // Arbitrary Luau execution can mutate a place even when phrased as a read.
 export const isMutation = (name: string) => !readers.includes(name);

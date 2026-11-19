@@ -1,49 +1,43 @@
-// Model IDs verified against NVIDIA's public catalog on 2026-11-02.
-// Recommendations are choices for these roles, not benchmark claims.
-export const nvidiaAgentModels = {
+// Syntra runs every agent through the official OpenAI Codex app-server.
+// The Lead orchestrator uses the stronger model; all seven subagents use the
+// same default so a delegated turn is predictable and inexpensive.
+export const codexLeadModel = "gpt-6.2-sol";
+export const codexSubagentModel = "gpt-6.1-terra";
+
+export const codexAgentModels = {
   Lead: {
-    model: "nvidia/nemotron-3-ultra-550b-a55b",
-    reason: "Planning, delegation and tool-driven coordination",
+    model: codexLeadModel,
+    reason: "Main Codex orchestrator that sets up and coordinates the seven subagents",
   },
   Architect: {
-    model: "deepseek-ai/deepseek-v4.1-flash",
-    reason: "System design and code-context analysis",
+    model: codexSubagentModel,
+    reason: "Systems design and code-context analysis",
   },
   Builder: {
-    model: "deepseek-ai/deepseek-v4.1-flash",
-    reason: "Implementation and multi-step coding tools",
+    model: codexSubagentModel,
+    reason: "Luau implementation and multi-step coding tools",
   },
   Frame: {
-    model: "nvidia/nemotron-3.5-super-vl-120b-a12b",
+    model: codexSubagentModel,
     reason: "Interface implementation and visual context",
   },
   Scenic: {
-    model: "nvidia/nemotron-3.5-super-vl-120b-a12b",
+    model: codexSubagentModel,
     reason: "World-building scripts and visual context",
   },
   Balance: {
-    model: "nvidia/nemotron-3.5-lightning-30b-a3b",
+    model: codexSubagentModel,
     reason: "Economy calculations and progression analysis",
   },
   Tester: {
-    model: "nvidia/nemotron-3-ultra-550b-a55b",
-    reason:
-      "Independent verification using a different model family from Builder",
+    model: codexSubagentModel,
+    reason: "Independent verification with real diff and Studio evidence",
+  },
+  Codex: {
+    model: codexSubagentModel,
+    reason: "Local repository coding, checks and reviewable diffs",
   },
 } as const;
 
-export const nvidiaFreeModelIds: string[] = [
-  ...new Set(Object.values(nvidiaAgentModels).map((p) => p.model)),
-];
-
-// Verified in OpenRouter's public catalog (tools supported) on 2026-11-03.
-export const openRouterAgentModels = Object.fromEntries(
-  Object.keys(nvidiaAgentModels).map((name) => [
-    name,
-    {
-      model: "deepseek/deepseek-v4.1-flash",
-      reason:
-        "Low-cost tool-capable coding and planning; independently configurable per agent",
-    },
-  ]),
-) as Record<keyof typeof nvidiaAgentModels, { model: string; reason: string }>;
+export const codexAgentModel = codexSubagentModel;
+export type CodexAgentName = keyof typeof codexAgentModels;

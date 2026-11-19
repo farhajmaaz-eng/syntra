@@ -1,12 +1,12 @@
-# Forge Studio design
+# Syntra Studio design
 
-Forge is a compact workspace for Roblox development, based on `design-reference.png` and the requirements in `ROBLOX_STUDIO_UI_REDESIGN.md`. The interface uses a near-black canvas, a 232px navigation sidebar, a persistent 76px project toolbar, restrained purple selection, green approval controls, and a pink-to-orange primary action. Locally bundled Geist provides the interface typography; monospace is reserved for code and exact tool arguments.
+Syntra is a compact workspace for Roblox development, based on `design-reference.png` and the requirements in `ROBLOX_STUDIO_UI_REDESIGN.md`. The interface uses a near-black canvas, a 232px navigation sidebar, a persistent 76px project toolbar, restrained purple selection, green approval controls, and a pink-to-orange primary action. Locally bundled Geist provides the interface typography; monospace is reserved for code and exact tool arguments.
 
 Shared tokens in `src/app/globals.css` define surfaces, text, borders, status colors, spacing, and radii. Graphite and Evergreen retain their persisted preference keys and adjust the accent within the same visual system. The default palette retains the `nord` preference key for compatibility with saved settings. Comfortable density and focus mode continue to work.
 
-`WorkspaceShell` owns shared navigation and toolbar presentation. Navigation counts, agent tiles, active agents, projects, connection status, and spending all come from the existing snapshot. The budget card displays actual workspace API spending and reservations; it does not imply a subscription or a per-project media budget. Unsupported reference features such as Pitches, Market, Pro, and app updates are omitted.
+`WorkspaceShell` owns shared navigation and toolbar presentation. Navigation counts, agent tiles, active agents, projects, connection status, and Codex token usage all come from the existing snapshot. The sidebar usage card reports Codex input/output tokens and turn counts; it does not imply a Syntra subscription or a per-project media budget. Unsupported reference features such as Pitches, Market, Pro, and app updates are omitted.
 
-The sidebar scrolls independently when its contents exceed the available height. Tablet widths use an icon rail, and phones use a native modal navigation drawer with keyboard dismissal and focus management. The main canvas scrolls beneath the persistent toolbar. Each of the nine existing views retains its own purpose and controls.
+The sidebar scrolls independently when its contents exceed the available height. Tablet widths use an icon rail, and phones use a native modal navigation drawer with keyboard dismissal and focus management. The main canvas scrolls beneath the persistent toolbar. The Codex view adds auth, project confinement, the eight-agent topology, sessions, streamed turns, diffs, token usage and approvals. Existing views retain their own purpose and controls.
 
 ## Reviews
 
@@ -21,7 +21,7 @@ V2 extends the existing design with a local asset/system catalog, immutable pitc
 ## Preserved controls
 
 - Ctrl/Cmd+K opens page, agent, and task search.
-- Alt+1…9 preserves the established workspace order: Home, Lead, Team, Tasks, Games, Review, Library, Activity, Settings.
+- Alt+1…9 covers Home, Lead, Team, Tasks, Codex, Games, Review, Library and Activity; Settings and the research views remain available from the sidebar or launcher.
 - Alt+F toggles focus mode; `?` opens keyboard shortcuts.
 - Escape closes native dialogs, restoring keyboard focus.
 - Settings retains model configuration, Studio connection, spending limits, approval policy, density, and themes.
