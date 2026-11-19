@@ -1,9 +1,10 @@
 "use client";
 
+import { readWorkspaceStorage } from "./workspace-storage";
 import { roles } from "./roles";
 import { codexAgentModel, codexAgentModels } from "./model-presets";
 
-const STATE_KEY = "forge-standalone-workspace-v1";
+const STATE_KEY = "syntra-standalone-workspace-v1";
 
 function defaultAgents() {
   return Object.keys(roles).map((name) => ({
@@ -118,7 +119,7 @@ export function createStandaloneSnapshot() {
 export function loadStandaloneSnapshot() {
   if (typeof window === "undefined") return createStandaloneSnapshot();
   try {
-    const raw = localStorage.getItem(STATE_KEY);
+    const raw = readWorkspaceStorage("standalone-workspace-v1");
     if (!raw) return createStandaloneSnapshot();
     const parsed = JSON.parse(raw);
     const base = createStandaloneSnapshot();

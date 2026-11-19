@@ -73,7 +73,7 @@ The Codex page supports the app-server’s documented flows:
 2. **OpenAI API key**, sent once to the local app-server.
 
 The app-server writes credentials to the isolated
-`$FORGE_DATA_DIR/codex-home` directory. Syntra never stores a Codex token in its
+`$SYNTRA_DATA_DIR/codex-home` directory. Syntra never stores a Codex token in its
 SQLite database, snapshots, diagnostics, events or browser responses.
 `CODEX_API_KEY` may be supplied in the worker environment instead.
 

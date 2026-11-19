@@ -2,8 +2,10 @@ import { it, expect, afterAll } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-const dir = mkdtempSync(resolve(tmpdir(), "forge-library-"));
-process.env.FORGE_DATA_DIR = dir;
+import authored from "../library/playbooks.json";
+import official from "../library/official.json";
+const dir = mkdtempSync(resolve(tmpdir(), "syntra-library-"));
+process.env.SYNTRA_DATA_DIR = dir;
 const { librarySearch, libraryRead, libraryAction, libraryBrief, libraryStats } =
   await import("../worker/library");
 const { db } = await import("../worker/store");
@@ -13,9 +15,8 @@ afterAll(() => {
 });
 it("seeds the official pack, agent playbooks and task recipes", () => {
   const stats = libraryStats();
-  expect(stats.official).toBeGreaterThanOrEqual(90);
-  expect(stats.playbooks).toBeGreaterThanOrEqual(8);
-  expect(stats.recipes).toBeGreaterThanOrEqual(12);
+  expect(stats.official).toBe(official.length);
+  expect(stats.playbooks + stats.recipes).toBe(authored.entries.length);
   expect(librarySearch().length).toBe(stats.total);
   const results = librarySearch("RemoteEvent", "", false, { kind: "official" });
   expect(results.length).toBeGreaterThan(0);
@@ -25,6 +26,39 @@ it("seeds the official pack, agent playbooks and task recipes", () => {
   expect(article.revision).toMatch(/^[a-f0-9]{40}$/);
   expect(article.sections.length).toBeGreaterThan(0);
   expect(() => librarySearch('" OR * - ()')).not.toThrow();
+});
+
+it("indexes distinct authored guides with primary sources and valid related IDs", () => {
+  const ids = new Set([...authored.entries, ...official].map(({ id }) => id));
+  expect(ids.size).toBe(authored.entries.length + official.length);
+  const categories = new Set(["Agent playbooks", ...official.map(({ category }) => category)]);
+  for (const entry of authored.entries) {
+    expect(categories.has(entry.category)).toBe(true);
+    expect(entry.sources.length).toBeGreaterThan(0);
+    expect(entry.sources.every(({ url }) =>
+      ["create.roblox.com", "luau.org", "rojo.space"].includes(new URL(url).hostname),
+    )).toBe(true);
+    expect(entry.related.every((id) => ids.has(id))).toBe(true);
+    expect(libraryRead(entry.id).sections.length).toBeGreaterThanOrEqual(2);
+  }
+});
+
+it.each([
+  ["ProcessReceipt duplicate PurchaseId", "Builder", "playbook-purchase-receipts"],
+  ["MemoryStore queue invisibility redelivery", "Architect", "playbook-cross-server"],
+  ["Path.Blocked moving goal", "Scenic", "recipe-npc-pathfinding"],
+  ["MicroProfiler p95 frame time", "Tester", "recipe-performance-triage"],
+  ["strict Luau tagged union", "Codex", "playbook-luau-contracts"],
+  ["server authority replication snapshot delta", "Architect", "playbook-network-sync"],
+  ["live schemaVersion rollback", "Architect", "recipe-save-migration"],
+])("ranks implementation guidance first for %s", (query, agent, guideId) => {
+  const [result] = librarySearch(query, "", false, { agent, limit: 1 });
+  expect(result.id).toBe(guideId);
+  const brief = libraryBrief(query, agent, 3);
+  expect(brief.sections[0].id).toBe(guideId);
+  expect(new Set(brief.sections.map(({ id }) => id)).size).toBe(brief.count);
+  expect(brief.text).toContain(result.sources[0].url);
+  expect(brief.chars).toBeLessThanOrEqual(24000);
 });
 it("retrieves heading-aware sections and builds a cited agent brief", () => {
   const results = librarySearch("client server remote validation", "", false, {

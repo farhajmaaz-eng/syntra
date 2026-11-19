@@ -3,8 +3,8 @@ vi.setConfig({ testTimeout: 20000, hookTimeout: 20000 });
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-const dir = mkdtempSync(resolve(tmpdir(), "forge-mcp-audit-"));
-process.env.FORGE_DATA_DIR = dir;
+const dir = mkdtempSync(resolve(tmpdir(), "syntra-mcp-audit-"));
+process.env.SYNTRA_DATA_DIR = dir;
 const { db, set, get } = await import("../worker/store");
 const { Studio, expandEnvironment } = await import("../worker/mcp");
 const studio = new Studio(),
@@ -34,7 +34,7 @@ it("expands Windows variables case-insensitively and preserves compound cmd argu
   expect(() => expandEnvironment("%MISSING%", {})).toThrow("MISSING");
 });
 it("reports startup failures and clears stale advertised tools", async () => {
-  set("mcpCommand", "/nonexistent/forge-mcp");
+  set("mcpCommand", "/nonexistent/syntra-mcp");
   await studio.connect();
   expect(studio.client).toBeNull();
   expect(studio.tools).toEqual([]);

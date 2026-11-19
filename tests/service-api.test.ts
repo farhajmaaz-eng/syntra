@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const dir = mkdtempSync(join(tmpdir(), "forge-service-api-"));
-process.env.FORGE_DATA_DIR = dir;
+const dir = mkdtempSync(join(tmpdir(), "syntra-service-api-"));
+process.env.SYNTRA_DATA_DIR = dir;
 
 const { action, handleWorkerGet } = await import("../worker/service");
 const { safeJsonArray, safeJsonValue } = await import(

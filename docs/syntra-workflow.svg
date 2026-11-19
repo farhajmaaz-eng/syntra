@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="292" viewBox="0 0 960 292" role="img" aria-labelledby="title description">
+  <title id="title">The Syntra Studio workflow</title>
+  <desc id="description">The Lead turns your request into tasks for seven specialists. They work on local files or through Roblox Studio MCP. Review shows proposed changes and Tester evidence.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+      <path d="M0 0l7 3.5L0 7z" fill="#b7a3fb"/>
+    </marker>
+  </defs>
+  <rect width="960" height="292" rx="20" fill="#11121a"/>
+  <g font-family="system-ui, sans-serif">
+    <text x="36" y="53" fill="#f7f4ff" font-size="30" font-weight="700">Syntra Studio</text>
+    <text x="36" y="82" fill="#c8bfd9" font-size="17">A Codex workspace for Roblox development</text>
+    <g fill="#1d1d2c" stroke="#574a76">
+      <rect x="36" y="114" width="260" height="140" rx="13"/>
+      <rect x="350" y="114" width="260" height="140" rx="13"/>
+      <rect x="664" y="114" width="260" height="140" rx="13"/>
+    </g>
+    <g stroke="#b7a3fb" stroke-width="2" marker-end="url(#arrow)">
+      <path d="M307 184h30"/>
+      <path d="M621 184h30"/>
+    </g>
+    <g fill="#efebff" font-size="22" font-weight="650">
+      <text x="56" y="157">Lead</text>
+      <text x="370" y="157">Specialist tasks</text>
+      <text x="684" y="157">Review</text>
+    </g>
+    <g fill="#cec8db" font-size="16">
+      <text x="56" y="188">Submit a request with a</text>
+      <text x="56" y="212">goal and test criteria.</text>
+      <text x="370" y="188">Seven agents work on local</text>
+      <text x="370" y="212">files or in Roblox Studio.</text>
+      <text x="684" y="188">Inspect proposed changes,</text>
+      <text x="684" y="212">diffs and Tester evidence.</text>
+    </g>
+  </g>
+</svg>

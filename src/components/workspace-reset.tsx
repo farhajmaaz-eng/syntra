@@ -101,7 +101,7 @@ export default function WorkspaceReset({
                 );
                 if (out.scope === "everything") {
                   for (const key of Object.keys(localStorage))
-                    if (key.startsWith("forge-") || key.startsWith("syntra-"))
+                    if (key.startsWith("syntra-") || key.startsWith("forge-"))
                       localStorage.removeItem(key);
                   location.assign("/");
                 }

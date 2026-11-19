@@ -1,13 +1,14 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { NextRequest, NextResponse } from "next/server";
+import { workspaceDataDirectory } from "@/lib/workspace-paths";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 async function proxyExternal(req: NextRequest, path: string[]) {
   const secret = await readFile(
-    resolve(process.env.FORGE_DATA_DIR || ".data", "worker.secret"),
+    resolve(workspaceDataDirectory(), "worker.secret"),
     "utf8",
   );
   const r = await fetch(
@@ -20,7 +21,7 @@ async function proxyExternal(req: NextRequest, path: string[]) {
       },
       body: req.method === "POST" ? await req.text() : undefined,
       cache: "no-store",
-      signal: AbortSignal.timeout(330000),
+      signal: AbortSignal.timeout(path[0] === "health" ? 2000 : 330000),
     },
   );
   return new NextResponse(await r.arrayBuffer(), {
@@ -42,15 +43,13 @@ async function handle(
   const joinedPath = path.join("/");
   const externalMode = process.env.WORKER_EXTERNAL === "1";
 
-  if (req.method === "GET" && joinedPath === "health") {
-    if (!externalMode) {
-      const service = await import("../../../../worker/service");
-      service.ensureEmbeddedWorkerStarted();
-    }
+  if (req.method === "GET" && joinedPath === "health" && !externalMode) {
+    const service = await import("../../../../worker/service");
+    service.ensureEmbeddedWorkerStarted();
     return NextResponse.json(
       {
         ok: true,
-        mode: externalMode ? "external" : "embedded",
+        mode: "embedded",
         uptimeSec: Math.round(process.uptime()),
       },
       { headers: { "Cache-Control": "no-store" } },
@@ -64,8 +63,9 @@ async function handle(
       return NextResponse.json(
         {
           error: "Worker unavailable. Run npm run worker in a separate terminal.",
+          ...(joinedPath === "health" ? { ok: false, mode: "external" } : {}),
         },
-        { status: 503 },
+        { status: 503, headers: { "Cache-Control": "no-store" } },
       );
     }
   }

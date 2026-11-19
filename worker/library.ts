@@ -150,20 +150,28 @@ export function resetLibrary() {
   for (const entry of seeds) seedEntry(entry);
 }
 
-function unpack(row: any, full = false, includeSectionContent = false) {
+function unpack(row: any, full = false) {
   if (!row) return null;
   const entry = JSON.parse(row.payload);
   if (!full) delete entry.content;
-  const sections = db
-    .prepare(
-      "SELECT id,heading,ordinal,chars,content FROM library_sections WHERE entry_id=? ORDER BY ordinal",
-    )
-    .all(row.id) as any[];
-  entry.sections = includeSectionContent
-    ? sections
-    : sections.map(({ content: _content, ...section }) => section);
-  entry.sectionCount = sections.length;
   return { ...entry, starred: !!row.starred, updated: row.updated };
+}
+
+const readSectionMetadata = db.prepare(
+  "SELECT id,heading,ordinal,chars FROM library_sections WHERE entry_id=? ORDER BY ordinal",
+);
+const readSections = db.prepare(
+  "SELECT id,heading,ordinal,chars,content FROM library_sections WHERE entry_id=? ORDER BY ordinal",
+);
+const readSection = db.prepare(
+  "SELECT id,heading,ordinal,chars,content FROM library_sections WHERE id=? AND entry_id=?",
+);
+
+function withSections(entry: any, includeContent = false) {
+  const sections = (includeContent ? readSections : readSectionMetadata).all(
+    entry.id,
+  );
+  return { ...entry, sections, sectionCount: sections.length };
 }
 
 export function libraryRead(
@@ -174,13 +182,9 @@ export function libraryRead(
     .prepare("SELECT * FROM library_entries WHERE id=?")
     .get(id);
   if (!row) return null;
-  const entry: any = unpack(row, true, options.includeSectionContent);
+  const entry = withSections(unpack(row, true), options.includeSectionContent);
   if (options.sectionId) {
-    const section = db
-      .prepare(
-        "SELECT id,heading,ordinal,chars,content FROM library_sections WHERE id=? AND entry_id=?",
-      )
-      .get(options.sectionId, id) as any;
+    const section = readSection.get(options.sectionId, id) as any;
     if (!section) return null;
     return { ...entry, section, content: section.content };
   }
@@ -194,11 +198,8 @@ export type LibrarySearchOptions = {
   sectionLimit?: number;
 };
 
-function ftsQuery(query: string) {
-  const tokens = query.match(/[\p{L}\p{N}_]+/gu)?.slice(0, 12) || [];
-  return tokens.length
-    ? tokens.map((token) => `"${token}"*`).join(" OR ")
-    : "";
+function searchTokens(text: string) {
+  return text.toLowerCase().match(/[\p{L}\p{N}_]+/gu) || [];
 }
 
 function filters(
@@ -238,7 +239,8 @@ export function librarySearch(
 ) {
   const limit = Math.min(Math.max(options.limit ?? 200, 1), 200);
   const sectionLimit = Math.min(Math.max(options.sectionLimit ?? 80, 1), 200);
-  const match = ftsQuery(query);
+  const tokens = [...new Set(searchTokens(query))].slice(0, 12);
+  const match = tokens.map((token) => `"${token}"*`).join(" OR ");
   const entries = new Map<string, any>();
 
   const entryFilter = filters("e", category, starred, options);
@@ -292,14 +294,24 @@ export function librarySearch(
         entry.matches.sort((a: any, b: any) => a.score - b.score);
         entry.matches = entry.matches.slice(0, 3);
       }
+      if (tokens.length) {
+        // Compare exact title and tag matches before BM25. A navigation guide
+        // that mentions an API in passing should not bury its implementation.
+        const terms = new Set(searchTokens([entry.title, ...(entry.tags || [])].join(" ")));
+        entry.termMatches = tokens.filter((token) => terms.has(token)).length;
+      }
       return entry;
     })
     .sort((a, b) => {
+      if (!match && a.starred !== b.starred) return Number(b.starred) - Number(a.starred);
+      const termMatches = (b.termMatches ?? 0) - (a.termMatches ?? 0);
+      if (termMatches) return termMatches;
       const score = (a.score ?? 0) - (b.score ?? 0);
       if (score) return score;
       return String(a.title).localeCompare(String(b.title));
     })
-    .slice(0, limit);
+    .slice(0, limit)
+    .map(({ termMatches: _termMatches, ...entry }) => withSections(entry));
 }
 
 /**
@@ -321,7 +333,7 @@ export function libraryBrief(
   const selected: any[] = [];
   let total = 0;
   const budget = 24000;
-  const seen = new Set<string>();
+  const groups = [];
   for (const entry of results) {
     const matches = entry.matches?.length
       ? entry.matches
@@ -329,15 +341,17 @@ export function libraryBrief(
           sectionId: section.id,
           heading: section.heading,
         })) || [];
-    for (const match of matches) {
+    if (matches.length) groups.push({ entry, matches });
+  }
+  // Prefer a relevant section from several guides before letting one guide
+  // consume multiple slots in a short brief.
+  for (let rank = 0; rank < 3; rank++) {
+    for (const { entry, matches } of groups) {
       if (selected.length >= limit || total >= budget) break;
-      const section = db
-        .prepare(
-          "SELECT id,heading,content FROM library_sections WHERE id=? AND entry_id=?",
-        )
-        .get(match.sectionId, entry.id) as any;
-      if (!section || seen.has(section.id)) continue;
-      seen.add(section.id);
+      const match = matches[rank];
+      if (!match) continue;
+      const section = readSection.get(match.sectionId, entry.id) as any;
+      if (!section) continue;
       const remaining = budget - total;
       if (remaining < 500) break;
       const content = section.content.slice(0, remaining);
@@ -350,6 +364,7 @@ export function libraryBrief(
         summary: entry.summary,
         agents: entry.agents,
         source: entry.source,
+        sources: entry.sources || (entry.source ? [{ title: entry.title, url: entry.source }] : []),
         license: entry.license,
         heading: section.heading,
         content,
@@ -362,6 +377,7 @@ export function libraryBrief(
     }
     if (selected.length >= limit || total >= budget) break;
   }
+  const cited = new Set<string>();
   const text = selected
     .map((section) => {
       const tips = [
@@ -369,7 +385,14 @@ export function libraryBrief(
         ...(section.avoid || []).map((item: string) => `- Avoid: ${item}`),
         ...(section.checklist || []).map((item: string) => `- Check: ${item}`),
       ];
-      return `## ${section.title} — ${section.heading}\n[library:${section.id}#${section.heading}]\n${section.summary ? section.summary + "\n" : ""}${section.content}${tips.length ? "\n\n" + tips.join("\n") : ""}`;
+      const sources = section.sources
+        .filter(({ url }: { url: string }) => !cited.has(url))
+        .map(({ title, url }: { title: string; url: string }) => {
+          cited.add(url);
+          return `- Source: ${title} — ${url}`;
+        });
+      const notes = [...tips, ...sources];
+      return `## ${section.title} — ${section.heading}\n[library:${section.id}#${section.heading}]\n${section.summary ? section.summary + "\n" : ""}${section.content}${notes.length ? "\n\n" + notes.join("\n") : ""}`;
     })
     .join("\n\n");
   return {

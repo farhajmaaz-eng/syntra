@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 const calls = (value: any[]) =>
   `FIXTURE_CALLS_B64:${Buffer.from(JSON.stringify(value)).toString("base64")}`;
-const tmp = mkdtempSync(resolve(tmpdir(), "forge-test-"));
-process.env.FORGE_DATA_DIR = tmp;
+const tmp = mkdtempSync(resolve(tmpdir(), "syntra-test-"));
+process.env.SYNTRA_DATA_DIR = tmp;
 process.env.CODEX_APP_SERVER_COMMAND = process.execPath;
 process.env.CODEX_APP_SERVER_ARGS = JSON.stringify([
   resolve("tests/codex-fixture.mjs"),

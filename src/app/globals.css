@@ -6,7 +6,7 @@
   font-display: swap;
 }
 @font-face {
-  font-family: "Forge Mono";
+  font-family: "Syntra Mono";
   src: url("/fonts/geist-mono-latin.woff2") format("woff2");
   font-weight: 100 900;
   font-display: swap;
@@ -15,20 +15,20 @@
 :root,
 :root[data-theme="obsidian"] {
   color-scheme: dark;
-  --app-bg: #000000;
-  --sidebar-bg: #000000;
-  --toolbar-bg: rgba(0, 0, 0, 0.88);
-  --surface: #070709;
-  --surface-raised: #101014;
-  --surface-hover: #18181d;
-  --border: #26262c;
-  --border-soft: #16161b;
-  --text-primary: #ffffff;
-  --text-secondary: #a1a1aa;
-  --text-muted: #71717a;
-  --accent: #ffffff;
-  --accent-strong: #ffffff;
-  --accent-wash: rgba(255, 255, 255, 0.085);
+  --app-bg: #101012;
+  --sidebar-bg: #131315;
+  --toolbar-bg: #131315;
+  --surface: #18181c;
+  --surface-raised: #202024;
+  --surface-hover: #28282d;
+  --border: #343238;
+  --border-soft: #27262b;
+  --text-primary: #f6f3ed;
+  --text-secondary: #b6b0aa;
+  --text-muted: #9b9593;
+  --accent: #e3c99c;
+  --accent-strong: #f4ddba;
+  --accent-wash: rgba(227, 201, 156, 0.10);
   --success: #34d399;
   --success-wash: rgba(52, 211, 153, 0.1);
   --warning: #fbbf24;
@@ -42,8 +42,8 @@
   --dim: var(--text-muted);
   --accent-soft: var(--accent-wash);
   --sans: Geist, -apple-system, BlinkMacSystemFont, sans-serif;
-  --mono: "Forge Mono", ui-monospace, SFMono-Regular, monospace;
-  --radius: 11px;
+  --mono: "Syntra Mono", ui-monospace, SFMono-Regular, monospace;
+  --radius: 15px;
   --gap: 18px;
   --row: 13px;
   --sidebar-width: 232px;
@@ -292,10 +292,10 @@ progress::-moz-progress-bar {
   place-items: center;
   width: 28px;
   height: 28px;
-  border-radius: 7px;
-  color: var(--foreground);
-  background: var(--surface-raised);
-  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--accent);
+  background: linear-gradient(145deg, var(--accent-wash), var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
 }
 .brand strong {
   font-size: 16px;
@@ -353,10 +353,9 @@ progress::-moz-progress-bar {
   color: var(--foreground);
 }
 .nav-item.active {
-  background: var(--surface-raised);
-  border-color: var(--border);
+  background: var(--accent-wash);
+  border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
   color: var(--foreground);
-  box-shadow: inset 2px 0 0 var(--accent);
 }
 .nav-item.active > svg {
   color: var(--accent);
@@ -563,7 +562,6 @@ progress::-moz-progress-bar {
   min-height: var(--toolbar-height);
   padding: 10px 28px;
   background: var(--toolbar-bg);
-  backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-soft);
 }
 .breadcrumb {
@@ -750,14 +748,14 @@ main {
     filter 150ms;
 }
 .button.primary {
-  background: #ffffff;
-  color: #000000;
-  border-color: #ffffff;
+  background: linear-gradient(155deg, var(--accent-strong), var(--accent));
+  color: #151218;
+  border-color: var(--accent);
   font-weight: 600;
 }
 .button.primary:hover:not(:disabled) {
-  background: #e4e4e7;
-  border-color: #e4e4e7;
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
 }
 .button:active:not(:disabled) {
   transform: translateY(1px);
@@ -1124,43 +1122,47 @@ main {
   margin-bottom: 24px;
 }
 .overview-stats > div {
-  padding: 18px 20px;
+  padding: clamp(13px, 1.6vw, 22px);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--surface);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  background: linear-gradient(150deg, var(--surface-raised), var(--surface) 75%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%);
   min-width: 0;
 }
 .overview-stats > div:last-child {
-  border: 1px solid var(--border);
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+  background: linear-gradient(145deg, var(--accent-wash), var(--surface) 79%);
 }
-.overview-stats span {
-  font: 11px var(--mono);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+.metric-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 550;
   color: var(--muted);
+}
+.metric-label svg {
+  flex-shrink: 0;
+  color: var(--accent);
 }
 .overview-stats strong {
   display: block;
-  font: 26px var(--sans);
-  font-weight: 550;
-  letter-spacing: -0.03em;
+  font: 560 clamp(22px, 2.5vw, 35px)/1.15 var(--sans);
+  letter-spacing: -0.045em;
   font-variant-numeric: tabular-nums;
-  margin: 8px 0 6px;
+  overflow-wrap: anywhere;
+  margin: 15px 0 5px;
   color: var(--foreground);
 }
 .overview-stats strong > small {
-  font: 11px var(--sans);
-  color: var(--dim);
+  font: 12px var(--sans);
+  color: var(--muted);
 }
-.overview-stats label {
-  display: block;
-  font: 11px var(--sans);
+.metric-detail {
+  margin: 0;
+  font-size: 11px;
   color: var(--dim);
-}
-.overview-stats progress {
-  height: 3px;
-  margin: 4px 0 6px;
 }
 .desktop-columns {
   display: grid;
@@ -1179,6 +1181,10 @@ main {
   padding: 0;
   overflow: hidden;
 }
+.request-pane {
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
+  background: linear-gradient(155deg, var(--accent-wash), transparent 55%), var(--surface);
+}
 .lead-command {
   display: flex;
   flex-direction: column;
@@ -1193,7 +1199,8 @@ main {
 .lead-command textarea {
   font-size: 12px;
   min-height: 94px;
-  line-height: 1.8;
+  line-height: 1.65;
+  background: var(--app-bg);
 }
 .request-actions {
   display: flex;
@@ -3349,18 +3356,6 @@ td small {
 .alert.success {
   border-color: color-mix(in srgb, var(--success) 30%, var(--border));
   background: rgba(52, 211, 153, 0.06);
-}
-.overview-stats span {
-  font-size: 11px;
-}
-.overview-stats strong {
-  font-family: var(--sans);
-  font-weight: 550;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.5px;
-}
-.overview-stats label {
-  font-size: 10px;
 }
 .callout,
 .workflow-step > b {

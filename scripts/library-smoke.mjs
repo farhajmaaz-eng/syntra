@@ -1,16 +1,24 @@
+import { readFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { chromium, expect } from "@playwright/test";
+const readPack = async (path) => JSON.parse(await readFile(new URL(path, import.meta.url), "utf8"));
+const bundledCount =
+  (await readPack("../library/official.json")).length +
+  (await readPack("../library/playbooks.json")).entries.length;
 const b = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
 const p = await b.newPage({ viewport: { width: 1440, height: 1100 } });
 const errors = [];
 p.on("pageerror", (e) => errors.push(e.message));
 try {
   await p.goto("http://127.0.0.1:3000/library");
-  await expect(p.locator(".reference-card")).toHaveCount(116);
+  await expect(p.locator(".reference-card")).toHaveCount(bundledCount);
+  await p.getByRole("button", { name: "Official guides", exact: true }).click();
   await p.getByRole("textbox", { name: "Search library" }).fill("RemoteEvent");
   await expect(p.locator(".reference-card").first()).toBeVisible();
   await p.locator(".reference-card .reference-open").first().click();
   await expect(p.locator(".reference-markdown")).toBeVisible();
   await expect(p.locator(".reference-advice")).toBeVisible();
+  await mkdir("artifacts", { recursive: true });
   await p.screenshot({
     path: "artifacts/library-guide-desktop.png",
     fullPage: true,
@@ -52,8 +60,9 @@ try {
     .getByRole("button", { name: "Delete reference", exact: true })
     .click();
   await expect(p.locator(".reference-reader")).toHaveCount(0);
+  await p.getByRole("button", { name: "All references", exact: true }).click();
   await p.getByRole("textbox", { name: "Search library" }).fill("");
-  await expect(p.locator(".reference-card")).toHaveCount(116);
+  await expect(p.locator(".reference-card")).toHaveCount(bundledCount);
   await p.screenshot({ path: "artifacts/library-desktop.png", fullPage: true });
   await p.setViewportSize({ width: 390, height: 844 });
   if (await p.evaluate(() => document.documentElement.scrollWidth > innerWidth))

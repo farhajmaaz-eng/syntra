@@ -14,6 +14,9 @@ import {
   Activity,
   Plus,
   Gamepad2,
+  CircleAlert,
+  Cpu,
+  Layers3,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Avatar } from "./agent-avatar";
@@ -75,28 +78,36 @@ export default function Overview({
     <div className="workspace-tiles">
       <div className="overview-stats stats">
         <div>
-          <span>Tasks</span>
+          <span className="metric-label">
+            Tasks <ListTodo size={16} aria-hidden="true" />
+          </span>
           <strong>
             {done.length}
             <small> / {tasks.length}</small>
           </strong>
-          <label>completed</label>
+          <p className="metric-detail">completed</p>
         </div>
         <div>
-          <span>Workers</span>
+          <span className="metric-label">
+            Workers <Layers3 size={16} aria-hidden="true" />
+          </span>
           <strong>
             {running.length}
-            <small> / 3</small>
+            <small> / {data.settings.concurrency || 3}</small>
           </strong>
-          <label>{queued.length} queued</label>
+          <p className="metric-detail">{queued.length} queued</p>
         </div>
         <div>
-          <span>Attention</span>
+          <span className="metric-label">
+            Attention <CircleAlert size={16} aria-hidden="true" />
+          </span>
           <strong className={notices ? "warning-text" : ""}>{notices}</strong>
-          <label>{failed.length} failed or blocked</label>
+          <p className="metric-detail">{failed.length} failed or blocked</p>
         </div>
         <div>
-          <span>Codex usage</span>
+          <span className="metric-label">
+            Codex usage <Cpu size={16} aria-hidden="true" />
+          </span>
           <strong>
             {(
               (data.codexUsage?.inputTokens || 0) +
@@ -104,7 +115,9 @@ export default function Overview({
             ).toLocaleString()}
             <small> tokens</small>
           </strong>
-          <label>{data.codexUsage?.calls || 0} turns · OpenAI billing</label>
+          <p className="metric-detail">
+            {data.codexUsage?.calls || 0} turns · OpenAI billing
+          </p>
         </div>
       </div>
       <div className="desktop-columns">

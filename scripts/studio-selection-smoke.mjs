@@ -4,10 +4,10 @@ import { chromium, expect } from "@playwright/test";
 import Database from "better-sqlite3";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
-const dir = resolve(process.env.FORGE_DATA_DIR || ".data");
-if (!dir.startsWith("/tmp/forge-pin-"))
+const dir = resolve(process.env.SYNTRA_DATA_DIR || ".data");
+if (!dir.startsWith("/tmp/syntra-pin-"))
   throw new Error(
-    "Use the same isolated /tmp/forge-pin-* directory for worker, Next and this check.",
+    "Use the same isolated /tmp/syntra-pin-* directory for worker, Next and this check.",
   );
 const oldId = "f6a42404-67b3-4ade-b58b-c6b30f3e2753",
   newId = "6465ed97-8651-49fb-8de5-853936ddf645";
@@ -60,7 +60,7 @@ try {
   });
   expect(direct.ok()).toBe(true);
   let data, game, run, dialog;
-  if (process.env.FORGE_SMOKE_RESUME === "connection-reset") {
+  if (process.env.SYNTRA_SMOKE_RESUME === "connection-reset") {
     data = await snapshot();
     expect(data.games).toHaveLength(1);
     game = data.games[0];
@@ -96,7 +96,7 @@ try {
       agent: "Builder",
       objective: "Repair after Studio restart",
     });
-    db = new Database(resolve(dir, "forge.sqlite"));
+    db = new Database(resolve(dir, "syntra.sqlite"));
     const messages = [
       {
         role: "user",
@@ -251,7 +251,7 @@ try {
   await expect(dialog).toBeVisible();
   await dialog.getByLabel(/Type RESET/i).fill("RESET STUDIO");
   await page.evaluate(() => {
-    localStorage.setItem("forge-game", "test");
+    localStorage.setItem("syntra-game", "test");
     localStorage.setItem("unrelated-preference", "keep");
   });
   await dialog
@@ -266,10 +266,10 @@ try {
   expect(data.settings.paused).toBe(true);
   expect(data.settings.mcpCommand).toBe("");
   expect(
-    existsSync(resolve(dir, data.settings.lastResetBackup, "forge.sqlite")),
+    existsSync(resolve(dir, data.settings.lastResetBackup, "syntra.sqlite")),
   ).toBe(true);
   expect(
-    await page.evaluate(() => localStorage.getItem("forge-game")),
+    await page.evaluate(() => localStorage.getItem("syntra-game")),
   ).toBeNull();
   expect(
     await page.evaluate(() => localStorage.getItem("unrelated-preference")),

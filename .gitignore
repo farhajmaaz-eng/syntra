@@ -13,9 +13,13 @@ test-results
 # Private worker state under custom data directories.
 **/worker.pid
 **/worker.secret
+**/syntra.sqlite*
 **/forge.sqlite*
 **/checkpoints.sqlite*
 **/worker-owner.sqlite*
 
-# Private reset snapshots (also when FORGE_DATA_DIR is customized).
+# Private reset snapshots (also when SYNTRA_DATA_DIR is customized).
 **/backups/reset-*
+
+# Generated browser smoke screenshots.
+/artifacts/

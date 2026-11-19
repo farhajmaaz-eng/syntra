@@ -60,6 +60,25 @@ const kindLabel = (kind: string) =>
         : kind === "personal"
           ? "Personal reference"
           : kind;
+
+function SourceLinks({ sources }: { sources?: { title: string; url: string }[] }) {
+  if (!sources?.length) return null;
+  return (
+    <details className="library-toc">
+      <summary>Sources ({sources.length})</summary>
+      <ul>
+        {sources.map(({ title, url }) => (
+          <li key={url}>
+            <a className="text-link" href={url} target="_blank" rel="noreferrer">
+              {title} <ExternalLink size={12} />
+            </a>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 export default function Library() {
   const [items, setItems] = useState<any[]>([]),
     [query, setQuery] = useState(""),
@@ -532,6 +551,7 @@ export default function Library() {
                   Open original source <ExternalLink size={14} />
                 </a>
               )}
+              <SourceLinks sources={article.sources} />
               {article.kind === "official" && (
                 <p className="source-version">
                   Saved {new Date(article.retrieved).toLocaleDateString()} ·{" "}
@@ -716,6 +736,7 @@ export default function Library() {
                         <Markdown remarkPlugins={[remarkGfm]}>
                           {section.content}
                         </Markdown>
+                        <SourceLinks sources={section.sources} />
                       </article>
                     ))
                   ) : (

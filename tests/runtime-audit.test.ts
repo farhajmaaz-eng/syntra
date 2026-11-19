@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
-const dir = mkdtempSync(resolve(tmpdir(), "forge-runtime-audit-"));
-process.env.FORGE_DATA_DIR = dir;
+const dir = mkdtempSync(resolve(tmpdir(), "syntra-runtime-audit-"));
+process.env.SYNTRA_DATA_DIR = dir;
 process.env.CODEX_APP_SERVER_COMMAND = process.execPath;
 process.env.CODEX_APP_SERVER_ARGS = JSON.stringify([
   resolve("tests/codex-fixture.mjs"),
@@ -256,7 +256,7 @@ it("persists new configuration through repeatable migrations and an independent 
     .run('{"top_p":0.8}', '{"allow_fallbacks":false}');
   migrateFeatures(store.db);
   migrateFeatures(store.db);
-  const second = new Database(resolve(dir, "forge.sqlite"), { readonly: true });
+  const second = new Database(resolve(dir, "syntra.sqlite"), { readonly: true });
   try {
     expect(
       second
@@ -273,27 +273,27 @@ it("persists new configuration through repeatable migrations and an independent 
 it("rejects a second worker before it can touch SQLite or recover another worker queue", async () => {
   const { existsSync } = await import("node:fs");
   const { spawnSync } = await import("node:child_process");
-  const locked = mkdtempSync(resolve(tmpdir(), "forge-lock-audit-"));
-  const previous = process.env.FORGE_DATA_DIR;
+  const locked = mkdtempSync(resolve(tmpdir(), "syntra-lock-audit-"));
+  const previous = process.env.SYNTRA_DATA_DIR;
   let release: undefined | (() => void);
   try {
-    process.env.FORGE_DATA_DIR = locked;
+    process.env.SYNTRA_DATA_DIR = locked;
     release = (await import("../worker/instance-lock")).releaseWorkerLock;
     const child = spawnSync(
       process.execPath,
       ["--import", "tsx", "worker/instance-lock.ts"],
       {
-        env: { ...process.env, FORGE_DATA_DIR: locked },
+        env: { ...process.env, SYNTRA_DATA_DIR: locked },
         encoding: "utf8",
         timeout: 10000,
       },
     );
     expect(child.status).not.toBe(0);
     expect(child.stderr).toContain("Another Syntra worker");
-    expect(existsSync(resolve(locked, "forge.sqlite"))).toBe(false);
+    expect(existsSync(resolve(locked, "syntra.sqlite"))).toBe(false);
   } finally {
     release?.();
-    process.env.FORGE_DATA_DIR = previous;
+    process.env.SYNTRA_DATA_DIR = previous;
     rmSync(locked, { recursive: true, force: true });
   }
 });

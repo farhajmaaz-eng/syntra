@@ -10,7 +10,8 @@ import {
   codexAgentModels,
 } from "../src/lib/model-presets";
 import { redact, publicData, OperationError } from "./errors";
-export const dataDir = resolve(process.env.FORGE_DATA_DIR || ".data");
+import { workspaceDataDirectory, workspaceDatabasePath } from "../src/lib/workspace-paths";
+export const dataDir = workspaceDataDirectory();
 mkdirSync(dataDir, { recursive: true, mode: 0o700 });
 const secretPath = resolve(dataDir, "worker.secret");
 if (!existsSync(secretPath))
@@ -19,7 +20,7 @@ if (!existsSync(secretPath))
     flag: "wx",
   });
 export const secret = readFileSync(secretPath, "utf8");
-export const db = new Database(resolve(dataDir, "forge.sqlite"));
+export const db = new Database(workspaceDatabasePath(dataDir));
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
 db.pragma("busy_timeout = 5000");

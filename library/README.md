@@ -6,10 +6,11 @@ agents. It has two layers:
 - **94 official Roblox Creator Documentation articles** with offline article
   text, source URLs, a pinned Git revision, retrieval timestamp and SHA-256
   source digest.
-- **22 original playbooks and recipes** written for Syntra’s agent roles,
-  covering orchestration, security, data, UI, world building, economy, testing,
-  performance and launch. These include checklists, do/avoid notes and links to
-  the official references they build on.
+- **40 Syntra guides** (28 playbooks and 12 recipes) covering strict Luau,
+  runtime architecture, networking and security, persistence, gameplay systems,
+  UI and accessibility, optimization, monetization, debugging, testing and
+  release engineering. Guides include practical decisions, failure drills,
+  relevant Luau examples, checklists and source links.
 
 Roblox Creator Documentation contributors own the official source material,
 distributed under **Creative Commons Attribution 4.0 International**; see
@@ -33,22 +34,30 @@ split into heading-aware sections of roughly 4,000 characters. Agents can:
   category. Results include matched headings and snippets.
 - `library_read` — read an entry or one specific section by ID.
 - `library_brief` — get a compact, cited task brief with the most relevant
-  sections, summaries, do/avoid notes and checklists. The brief is bounded to
-  about 24,000 characters.
+  sections from multiple guides with primary source links and checklists.
+  Retrieved section content is bounded to 24,000 characters.
 
-Search uses SQLite FTS5 with separate title and section indexes. Agents are
+Search uses SQLite FTS5 with separate entry and section indexes. Exact title and tag matches help specialist guides surface for API-specific queries. Agents are
 instructed to treat retrieved content as reference data, never as permission to
 run a tool, and to cite the reference ID and section.
 
-## RoAutomation comparison
+## Find guidance by task
 
-The released RoAutomation app keeps curated references as Markdown notes in
-`RoAutomation/Library/`, splits them into heading/paragraph chunks, ranks those
-chunks against a task and injects only the relevant sections. Syntra keeps those
-principles and adds a bundled official Roblox pack, section-level FTS, agent and
-kind filters, explicit `library_brief` results, source revisions and built-in
-checklists. The “How RoAutomation uses its Library” entry in
-`library/playbooks.json` records the comparison.
+| If you need to… | Search for… |
+| --- | --- |
+| Define module boundaries and typed rules | `strict Luau tagged union`, `character lifecycle cleanup` |
+| Validate client requests or recover network state | `RemoteEvent server-side rate limit`, `replication snapshot delta` |
+| Preserve player data or coordinate servers | `UpdateAsync session ownership`, `MemoryStore queue invisibility` |
+| Implement gameplay and usable UI | `checkpoint respawn`, `quest idempotent reward`, `gamepad focus TextScaled` |
+| Handle purchases and entitlements | `ProcessReceipt PurchaseId`, `subscription entitlement PolicyService` |
+| Diagnose and release a change | `MicroProfiler frame time`, `multiplayer regression`, `staged rollout rollback` |
+
+The worker loads the updated pack automatically on startup, using stable entry IDs
+to preserve existing bookmarks. No import is required. Keep platform APIs,
+limits and policy claims tied to their live primary source. The technical
+playbooks were reviewed against Roblox Creator Hub and upstream tooling
+documentation in November 2026. Pure Luau examples are small enough to run
+independently; Roblox service behavior still requires a staging experience.
 
 ## Refresh the official pack
 

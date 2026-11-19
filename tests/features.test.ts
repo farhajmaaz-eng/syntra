@@ -2,8 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-const dir = mkdtempSync(resolve(tmpdir(), "forge-v2-test-"));
-process.env.FORGE_DATA_DIR = dir;
+const dir = mkdtempSync(resolve(tmpdir(), "syntra-v2-test-"));
+process.env.SYNTRA_DATA_DIR = dir;
 process.env.CODEX_APP_SERVER_COMMAND = process.execPath;
 process.env.CODEX_APP_SERVER_ARGS = JSON.stringify([
   resolve("tests/codex-fixture.mjs"),

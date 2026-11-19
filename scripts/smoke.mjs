@@ -1,3 +1,4 @@
+import { mkdir } from "node:fs/promises";
 import { chromium } from "@playwright/test";
 const browser = await chromium.launch({
   headless: true,
@@ -29,6 +30,7 @@ for (const path of [
 }
 await page.goto("http://127.0.0.1:3000");
 await page.waitForSelector(".stats");
+await mkdir("artifacts", { recursive: true });
 await page.screenshot({
   path: "artifacts/overview-desktop.png",
   fullPage: true,

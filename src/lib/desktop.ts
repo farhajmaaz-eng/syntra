@@ -1,4 +1,5 @@
 "use client";
+import { readWorkspaceStorage } from "./workspace-storage";
 import { useCallback, useEffect, useState } from "react";
 export type DesktopPreferences = {
   theme: "obsidian" | "nord" | "graphite" | "evergreen";
@@ -15,7 +16,7 @@ export function useDesktopPreferences() {
   const [ready, setReady] = useState(false);
   useEffect(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem("forge-desktop") || "{}");
+      const saved = JSON.parse(readWorkspaceStorage("desktop") || "{}");
       setPreferences({
         theme: ["obsidian", "nord", "graphite", "evergreen"].includes(saved.theme)
           ? saved.theme
@@ -31,7 +32,7 @@ export function useDesktopPreferences() {
     document.documentElement.dataset.density = preferences.density;
     if (ready) {
       try {
-        localStorage.setItem("forge-desktop", JSON.stringify(preferences));
+        localStorage.setItem("syntra-desktop", JSON.stringify(preferences));
       } catch {}
     }
   }, [preferences, ready]);

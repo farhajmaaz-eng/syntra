@@ -1,6 +1,6 @@
 # Syntra Studio design
 
-Syntra is a compact workspace for Roblox development, based on `design-reference.png` and the requirements in `ROBLOX_STUDIO_UI_REDESIGN.md`. The interface uses a near-black canvas, a 232px navigation sidebar, a persistent 76px project toolbar, restrained purple selection, green approval controls, and a pink-to-orange primary action. Locally bundled Geist provides the interface typography; monospace is reserved for code and exact tool arguments.
+Syntra is a compact workspace for Roblox development. The Obsidian theme uses charcoal surfaces, warm metallic accents, a fixed navigation sidebar, and a persistent project toolbar. Locally bundled Geist provides the interface typography; monospace is reserved for code and exact tool arguments.
 
 Shared tokens in `src/app/globals.css` define surfaces, text, borders, status colors, spacing, and radii. Graphite and Evergreen retain their persisted preference keys and adjust the accent within the same visual system. The default palette retains the `nord` preference key for compatibility with saved settings. Comfortable density and focus mode continue to work.
 
@@ -16,7 +16,7 @@ The detail drawer exposes task context, ownership, attempt count, timestamps, co
 
 Individual and batch approval actions use the existing endpoints. Batch decisions are sequential because the backend accepts one approval per request. On failure, processing stops, already recorded decisions remain recorded, the error is surfaced, and the remaining items stay reviewable. Rejections require a confirmation dialog; canceling it sends no mutation. Worker-side validation remains authoritative if an item changes during review.
 
-V2 extends the existing design with a local asset/system catalog, immutable pitch versions, persistent verdict notes/history, and linked artifact revisions. Previews support explicit image and video deliverables; missing media falls back to inspectable output. Market and LiveOps use source-attributed imports until an external data adapter is configured. See [the V2 audit](FEATURE_AUDIT_V2.md) for implementation and verification details.
+V2 extends the existing design with a local asset/system catalog, immutable pitch versions, persistent verdict notes/history, and linked artifact revisions. Previews support explicit image and video deliverables; missing media falls back to inspectable output. Market and LiveOps use source-attributed imports until an external data adapter is configured.
 
 ## Preserved controls
 
@@ -32,3 +32,5 @@ Snapshots, WebSocket updates, polling, orchestration, persistence, task dependen
 ## Verification
 
 Run `npm run build`, `npm run typecheck`, and `npm test`. With the local web app and worker running, `scripts/ui-smoke.mjs`, `scripts/desktop-smoke.mjs`, and `scripts/library-smoke.mjs` check existing routes and workflows. `scripts/redesign-smoke.mjs` adds populated media reviews, partial batch failures, confirmation cancellation, individual decisions, revision feedback, run acceptance, uncertain-operation recovery, mobile navigation, and responsive widths from 320px to 1540px. It captures review screenshots under `artifacts/`; those populated screenshots use browser-only fixtures.
+
+The [Syntra workflow graphic](syntra-workflow.svg) shows the current Lead, specialist task, and review flow.

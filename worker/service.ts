@@ -287,6 +287,16 @@ export function handleWorkerGet(
   path: string,
   searchParams: URLSearchParams,
 ): WorkerGetResult {
+  if (path === "health") {
+    return {
+      kind: "json",
+      data: {
+        ok: true,
+        mode: "external",
+        uptimeSec: Math.round(process.uptime()),
+      },
+    };
+  }
   if (path === "assets/file") {
     const file = assetFile(searchParams.get("id") || "");
     return { kind: "binary", ...file };
@@ -369,12 +379,12 @@ type EmbeddedWorkerState = {
 
 export function ensureEmbeddedWorkerStarted() {
   const g = globalThis as typeof globalThis & {
-    __forgeEmbeddedWorker?: EmbeddedWorkerState;
+    __syntraEmbeddedWorker?: EmbeddedWorkerState;
   };
-  if (!g.__forgeEmbeddedWorker) {
-    g.__forgeEmbeddedWorker = { started: false, ticking: false };
+  if (!g.__syntraEmbeddedWorker) {
+    g.__syntraEmbeddedWorker = { started: false, ticking: false };
   }
-  const state = g.__forgeEmbeddedWorker;
+  const state = g.__syntraEmbeddedWorker;
   if (state.started) return;
   state.started = true;
   set("workerPort", Number(process.env.WORKER_PORT || 4318));

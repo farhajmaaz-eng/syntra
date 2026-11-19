@@ -141,7 +141,7 @@ export class Studio {
       const command = expandEnvironment(configured);
       const args = get<string[]>("mcpArgs").map((a) => expandEnvironment(a));
       const client = new Client(
-        { name: "forge-studio", version: "1.0.0" },
+        { name: "syntra", version: "1.0.0" },
         {
           listChanged: {
             tools: {

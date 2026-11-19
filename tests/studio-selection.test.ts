@@ -11,8 +11,8 @@ import {
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import Database from "better-sqlite3";
-const dir = mkdtempSync(resolve(tmpdir(), "forge-selection-"));
-process.env.FORGE_DATA_DIR = dir;
+const dir = mkdtempSync(resolve(tmpdir(), "syntra-selection-"));
+process.env.SYNTRA_DATA_DIR = dir;
 process.env.CODEX_APP_SERVER_COMMAND = process.execPath;
 process.env.CODEX_APP_SERVER_ARGS = JSON.stringify([
   resolve("tests/codex-fixture.mjs"),
@@ -429,7 +429,7 @@ it("requires typed reset confirmation and backs up connection state before clear
   expect(get("mcpCommand")).toBe("");
   expect(get("paused")).toBe(true);
   expect(db.prepare("SELECT COUNT(*) AS n FROM tasks").get()).toEqual({ n: 1 });
-  const backup = new Database(resolve(dir, out.backup, "forge.sqlite"), {
+  const backup = new Database(resolve(dir, out.backup, "syntra.sqlite"), {
     readonly: true,
   });
   try {
@@ -457,7 +457,7 @@ it("fully resets local data and credentials with a private recoverable backup an
   writeFileSync(resolve(dir, "assets", "test.txt"), "private asset");
   const p = previewWorkspaceReset({ scope: "everything" }, new Set());
   const out = await confirmWorkspaceReset(
-    { token: p.token, confirmation: "RESET FORGE" },
+    { token: p.token, confirmation: "RESET SYNTRA" },
     new Set(),
     {
       closeStudio: async () => {},
@@ -486,7 +486,7 @@ it("fully resets local data and credentials with a private recoverable backup an
   expect(
     readFileSync(resolve(dir, out.backup, "assets", "test.txt"), "utf8"),
   ).toBe("private asset");
-  expect(statSync(resolve(dir, out.backup, "forge.sqlite")).mode & 0o777).toBe(
+  expect(statSync(resolve(dir, out.backup, "syntra.sqlite")).mode & 0o777).toBe(
     0o600,
   );
 });
@@ -495,7 +495,7 @@ it("rejects a reset preview after work or configuration changes", async () => {
   db.prepare("UPDATE tasks SET instructions='new work' WHERE id='task'").run();
   await expect(
     confirmWorkspaceReset(
-      { token: p.token, confirmation: "RESET FORGE" },
+      { token: p.token, confirmation: "RESET SYNTRA" },
       new Set(),
       {
         closeStudio: async () => {},

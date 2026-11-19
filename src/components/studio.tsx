@@ -1,4 +1,5 @@
 "use client";
+import { readWorkspaceStorage } from "@/lib/workspace-storage";
 import {
   useCallback,
   useEffect,
@@ -7,6 +8,7 @@ import {
   type FormEvent,
 } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useDesktopPreferences } from "@/lib/desktop";
 import { Appearance, Shortcuts } from "./desktop-controls";
@@ -36,14 +38,9 @@ import { Button } from "@/components/ui/button";
 import { roles, type Role } from "@/lib/roles";
 import { Avatar } from "./agent-avatar";
 import Overview from "./overview";
-import LibraryHub from "./library-hub";
 import WorkspaceReset from "./workspace-reset";
 import TaskWorkspace, { NewTaskDialog } from "./task-workspace";
 import AgentWorkspace, { LeadWorkspace } from "./agent-workspace";
-import CodexWorkspace from "./codex-workspace";
-import GameOps from "./game-ops";
-import Market from "./market";
-import Pitches from "./pitches";
 import { ConfirmDialog, Skeleton } from "./ui/workspace-primitives";
 import { CustomSelect } from "./ui/custom-select";
 import { safeResponseJson } from "@/lib/utils";
@@ -53,7 +50,13 @@ import {
 } from "@/lib/offline-workspace";
 import CommandPalette from "./command-palette";
 import WorkspaceShell, { navigation as nav } from "./workspace-shell";
-import Reviews from "./reviews";
+const LibraryHub = dynamic(() => import("./library-hub"));
+const CodexWorkspace = dynamic(() => import("./codex-workspace"));
+const GameOps = dynamic(() => import("./game-ops"));
+const Market = dynamic(() => import("./market"));
+const Pitches = dynamic(() => import("./pitches"));
+const Reviews = dynamic(() => import("./reviews"));
+
 const money = (n: number) => `$${(n || 0).toFixed(4)}`;
 const date = (s: string) =>
   new Date(s.replace(" ", "T") + "Z").toLocaleTimeString([], {
@@ -138,32 +141,35 @@ export default function Studio({
     const agent =
       routeAgent || new URLSearchParams(location.search).get("agent");
     if (agent && agent in roles) setSelectedAgent(agent);
-    const game = localStorage.getItem("forge-game");
+    const game = readWorkspaceStorage("game");
     if (game) setSelectedGame(game);
     return () => document.removeEventListener("keydown", key);
   }, [page, routeTaskId, routeAgent]);
   function chooseGame(id: string) {
     setSelectedGame(id);
-    localStorage.setItem("forge-game", id);
+    localStorage.setItem("syntra-game", id);
   }
   const [workerOffline, setWorkerOffline] = useState(false);
-  const loadVersion = useRef(0);
-  const load = useCallback(async () => {
-    const version = ++loadVersion.current;
+  const snapshotRequest = useRef<AbortController | null>(null);
+  const load = useCallback(async (force = false) => {
+    if (snapshotRequest.current && !force) return;
+    snapshotRequest.current?.abort();
+    const request = new AbortController();
+    snapshotRequest.current = request;
     try {
       const r = await fetch("/api/snapshot", {
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.any([request.signal, AbortSignal.timeout(15000)]),
       });
       const d = await safeResponseJson(r);
       if (!r.ok) throw new Error(d.error || `Worker unavailable (${r.status})`);
-      if (version !== loadVersion.current) return;
+      if (request.signal.aborted) return;
       setWorkerOffline(false);
       setData(d);
       setConnection((prev) => (prev === "live" ? "live" : "polling"));
       setUpdatedAt(Date.now());
       setError("");
     } catch {
-      if (version !== loadVersion.current) return;
+      if (request.signal.aborted) return;
       setWorkerOffline(true);
       setConnection("standalone");
       setData((prev: any) =>
@@ -171,14 +177,23 @@ export default function Studio({
       );
       setUpdatedAt(Date.now());
       setError("");
+    } finally {
+      if (snapshotRequest.current === request) snapshotRequest.current = null;
     }
   }, []);
+  const workerPort = data?.settings.workerPort || 4318;
   useEffect(() => {
     void load();
-    const poll = setInterval(load, 4000);
     let ws: WebSocket | undefined;
     let retry: ReturnType<typeof setTimeout>;
     let disposed = false;
+    const refreshVisible = () => {
+      if (!document.hidden) void load();
+    };
+    const poll = setInterval(() => {
+      if (ws?.readyState !== WebSocket.OPEN) refreshVisible();
+    }, 4000);
+    document.addEventListener("visibilitychange", refreshVisible);
     const canUseDirectWs =
       typeof window !== "undefined" &&
       location.protocol === "http:" &&
@@ -186,15 +201,14 @@ export default function Studio({
     function connect() {
       if (!canUseDirectWs || disposed) return;
       try {
-        ws = new WebSocket(
-          `ws://${location.hostname}:${data?.settings.workerPort || 4318}`,
-        );
+        ws = new WebSocket(`ws://${location.hostname}:${workerPort}`);
         ws.onopen = () => setConnection("live");
-        ws.onmessage = () => void load();
+        ws.onmessage = refreshVisible;
         ws.onerror = () => setConnection("polling");
         ws.onclose = () => {
+          if (disposed) return;
           setConnection("polling");
-          if (!disposed) retry = setTimeout(connect, 4000);
+          retry = setTimeout(connect, 4000);
         };
       } catch {
         setConnection("polling");
@@ -202,7 +216,7 @@ export default function Studio({
     }
     if (canUseDirectWs) {
       void fetch("/api/health", { cache: "no-store" })
-        .then((r) => (r.ok ? safeResponseJson(r) : null))
+        .then(safeResponseJson)
         .then((health) => {
           if (!disposed && health?.mode === "external") {
             connect();
@@ -212,11 +226,14 @@ export default function Studio({
     }
     return () => {
       disposed = true;
+      document.removeEventListener("visibilitychange", refreshVisible);
+      snapshotRequest.current?.abort();
+      snapshotRequest.current = null;
       clearInterval(poll);
       clearTimeout(retry);
       ws?.close();
     };
-  }, [load, data?.settings.workerPort]);
+  }, [load, workerPort]);
   useEffect(() => {
     if (
       data?.games.length &&
@@ -313,7 +330,7 @@ export default function Studio({
       }
       const out = await safeResponseJson(r);
       if (!r.ok) throw new Error(out.error);
-      await load();
+      await load(true);
       if (path === "connect") {
         setNotice(
           out?.status === "connected"
@@ -419,7 +436,7 @@ export default function Studio({
       connection={connection}
       updatedAt={updatedAt}
       syncError={!!error}
-      refresh={load}
+      refresh={() => load(true)}
       preferences={preferences}
       updatePreferences={updatePreferences}
       openSearch={() => setPaletteOpen(true)}

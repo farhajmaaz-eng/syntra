@@ -3,12 +3,12 @@
 import { chromium, expect } from "@playwright/test";
 import { resolve } from "node:path";
 if (
-  !resolve(process.env.FORGE_DATA_DIR || ".data").startsWith(
-    "/tmp/forge-audit-",
+  !resolve(process.env.SYNTRA_DATA_DIR || ".data").startsWith(
+    "/tmp/syntra-audit-",
   )
 )
   throw new Error(
-    "Use the same isolated /tmp/forge-audit-* data directory for worker, dashboard and this check.",
+    "Use the same isolated /tmp/syntra-audit-* data directory for worker, dashboard and this check.",
   );
 const base = "http://127.0.0.1:3000";
 const browser = await chromium.launch({

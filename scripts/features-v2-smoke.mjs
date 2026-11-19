@@ -3,10 +3,10 @@ import { chromium, expect } from "@playwright/test";
 import Database from "better-sqlite3";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-const dataDir = process.env.FORGE_DATA_DIR;
-if (!dataDir || !resolve(dataDir).startsWith("/tmp/forge-v2-"))
+const dataDir = process.env.SYNTRA_DATA_DIR;
+if (!dataDir || !resolve(dataDir).startsWith("/tmp/syntra-v2-"))
   throw new Error(
-    "Use an isolated /tmp/forge-v2-* FORGE_DATA_DIR for both worker and Next.js, then run this script with the same variable.",
+    "Use an isolated /tmp/syntra-v2-* SYNTRA_DATA_DIR for both worker and Next.js, then run this script with the same variable.",
   );
 const browser = await chromium.launch({
   headless: true,
@@ -243,7 +243,7 @@ try {
 
   // This database is explicitly isolated above. Seed a producing task's artifact
   // to exercise real review mutations without making a paid Codex call.
-  const db = new Database(resolve(dataDir, "forge.sqlite"));
+  const db = new Database(resolve(dataDir, "syntra.sqlite"));
   const artifactId = `browser-review-artifact-${Date.now()}`;
   db.prepare(
     "INSERT INTO assets(id,game_id,task_id,name,kind,mime,url,status,source) VALUES (?,?,?,?,?,?,?,'pending',?)",

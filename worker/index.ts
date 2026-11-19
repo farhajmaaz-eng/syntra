@@ -52,6 +52,7 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(404).end("{}");
       return;
     }
+    req.setEncoding("utf8");
     let raw = "";
     for await (const c of req) {
       raw += c;

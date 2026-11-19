@@ -8,10 +8,11 @@ import {
   writeFileSync,
 } from "node:fs";
 import { resolve } from "node:path";
+import { workspaceDataDirectory } from "../src/lib/workspace-paths";
 // A separate SQLite transaction provides an OS-backed lifetime ownership lock.
 // It releases on process death, including on Windows, and avoids stale-PID
 // cleanup races. Acquire before importing the application's SQLite/runtime.
-const dir = resolve(process.env.FORGE_DATA_DIR || ".data");
+const dir = workspaceDataDirectory();
 mkdirSync(dir, { recursive: true, mode: 0o700 });
 const path = resolve(dir, "worker.pid");
 const ownership = new Database(resolve(dir, "worker-owner.sqlite"), {

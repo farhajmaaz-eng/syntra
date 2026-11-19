@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
-const dir = mkdtempSync(resolve(tmpdir(), "forge-codex-runtime-"));
-process.env.FORGE_DATA_DIR = dir;
+const dir = mkdtempSync(resolve(tmpdir(), "syntra-codex-runtime-"));
+process.env.SYNTRA_DATA_DIR = dir;
 process.env.CODEX_APP_SERVER_COMMAND = process.execPath;
 process.env.CODEX_APP_SERVER_ARGS = JSON.stringify([
   resolve("tests/codex-fixture.mjs"),

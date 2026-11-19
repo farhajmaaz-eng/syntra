@@ -15,6 +15,7 @@ import { codexAgentModels } from "../src/lib/model-presets";
 import { roles } from "../src/lib/roles";
 import { resetLibrary } from "./library";
 import { requireIdle, invalidateStudioIntents } from "./studio-selection";
+import { workspaceDatabaseName } from "../src/lib/workspace-paths";
 const previews = new Map<
   string,
   { scope: "connection" | "everything"; expires: number; fingerprint: string }
@@ -100,7 +101,7 @@ export function previewWorkspaceReset(body: unknown, active: Set<string>) {
     token,
     scope,
     counts: counts(),
-    phrase: scope === "everything" ? "RESET FORGE" : "RESET STUDIO",
+    phrase: scope === "everything" ? "RESET SYNTRA" : "RESET STUDIO",
     uncertainOperations: (
       db
         .prepare(
@@ -129,7 +130,7 @@ export async function confirmWorkspaceReset(
     throw new Error("Reset preview expired. Review it again.");
   if (
     a.confirmation !==
-    (p.scope === "everything" ? "RESET FORGE" : "RESET STUDIO")
+    (p.scope === "everything" ? "RESET SYNTRA" : "RESET STUDIO")
   )
     throw new Error("Type the reset confirmation phrase exactly");
   if (p.fingerprint !== fingerprint())
@@ -139,8 +140,9 @@ export async function confirmWorkspaceReset(
   const id = `reset-${randomUUID()}`,
     backup = resolve(dataDir, "backups", id);
   mkdirSync(backup, { recursive: true, mode: 0o700 });
-  await db.backup(resolve(backup, "forge.sqlite"));
-  chmodSync(resolve(backup, "forge.sqlite"), 0o600);
+  const backupDatabase = resolve(backup, workspaceDatabaseName);
+  await db.backup(backupDatabase);
+  chmodSync(backupDatabase, 0o600);
   await hooks.backupCheckpoints(resolve(backup, "checkpoints.sqlite"));
   chmodSync(resolve(backup, "checkpoints.sqlite"), 0o600);
   for (const name of ["provider-credentials.json", "assets"])
