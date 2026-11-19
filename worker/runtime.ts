@@ -12,6 +12,7 @@ import { db, get, set, task, addTask, event, dataDir } from "./store";
 import { roles, isMutation, readers, type Role } from "../src/lib/roles";
 import { studio, StudioCallError } from "./mcp";
 import { OperationError, redact } from "./errors";
+import { creativeDefinitions, isCreativeTool, runCreativeTool, validateIllustrateUpload } from "./creative-tools";
 import { librarySearch, libraryRead, libraryBrief } from "./library";
 import { saveAsset, savePitch, publicMessage } from "./features";
 import { codex, codexTaskSession, type CodexDynamicTool, type CodexToolCall } from "./codex";
@@ -202,6 +203,12 @@ function internalTools(role: Role): CodexDynamicTool[] {
             ["taskId", "passed", "evidence"],
           ),
           declaration(
+            "verify_creative",
+            "Record independent verification for local Design Studio or Illustrate output. Inspect the saved design and each edited mesh project first. If the run also changes Roblox Studio, finish with Studio verify.",
+            { passed: { type: "boolean" }, evidence: string },
+            ["passed", "evidence"],
+          ),
+          declaration(
             "verify",
             "Record the Studio test verdict. Supply actual Studio inspection, playtest and console evidence gathered in this task.",
             { passed: { type: "boolean" }, evidence: string },
@@ -252,6 +259,7 @@ function internalTools(role: Role): CodexDynamicTool[] {
 export function toolsFor(role: Role): CodexDynamicTool[] {
   return [
     ...internalTools(role),
+    ...creativeDefinitions(role),
     ...studio.available(role).map((tool) => ({
       name: tool.name,
       description: tool.description || tool.name,
@@ -361,6 +369,19 @@ async function executeTool(t: any, role: Role, call: CodexToolCall) {
   const { run } = runFor(t.id);
   const signal = signalFor(t.id);
   let result: any;
+
+  if (isCreativeTool(name)) {
+    signal?.throwIfAborted();
+    ledger(ledgerId, t.id, name, args, "running");
+    try {
+      result = await runCreativeTool(role, name, args);
+      ledger(ledgerId, t.id, name, args, "done", result);
+      return outputText(result);
+    } catch (error) {
+      ledger(ledgerId, t.id, name, args, "failed", { error: redact(error) });
+      throw error;
+    }
+  }
 
   if (name === "ask_human") {
     const a = z
@@ -515,11 +536,45 @@ async function executeTool(t: any, role: Role, call: CodexToolCall) {
     return outputText(result);
   }
 
+  if (name === "verify_creative") {
+    if (role !== "Tester") throw new Error("Only Tester can verify.");
+    const { passed, evidence } = z.object({ passed: z.boolean(), evidence: z.string().min(20).max(12000) }).parse(args);
+    const changes = db.prepare(`SELECT c.tool,c.args,c.result FROM tool_calls c JOIN tasks t ON t.id=c.task_id
+      WHERE t.run_id=? AND c.status='done' AND c.tool IN ('design_edit','illustrate_create','illustrate_mesh')`)
+      .all(t.run_id) as Array<{ tool: string; args: string; result: string }>;
+    const localDesign = changes.some(({ tool }) => tool === "design_edit");
+    const editedMeshes = new Set(changes.flatMap(({ tool, args, result }) => {
+      if (tool === "illustrate_create") return [String(JSON.parse(result).id)];
+      const input = JSON.parse(args);
+      return tool === "illustrate_mesh" && !["inspect_scene", "validate_roblox_compatibility"].includes(input.tool)
+        ? [String(input.projectId)] : [];
+    }));
+    if (!localDesign && !editedMeshes.size) throw new Error("There are no creative edits in this run.");
+    const inspected = db.prepare("SELECT tool,args FROM tool_calls WHERE task_id=? AND status='done' AND tool IN ('design_inspect','illustrate_mesh')")
+      .all(t.id) as Array<{ tool: string; args: string }>;
+    if (localDesign && !inspected.some(({ tool }) => tool === "design_inspect")) {
+      throw new Error("Inspect the saved Design Studio scene first.");
+    }
+    const meshReadbacks = new Set(inspected.flatMap(({ tool, args }) => {
+      const input = JSON.parse(args);
+      return tool === "illustrate_mesh" && input.tool === "inspect_scene" ? [String(input.projectId)] : [];
+    }));
+    if ([...editedMeshes].some((projectId) => !meshReadbacks.has(projectId))) {
+      throw new Error("Inspect every edited Illustrate project first.");
+    }
+    if (!passed) throw new Error(`Verification failed: ${evidence}`);
+    const studioPending = runHasStudioWork(t.run_id);
+    if (!studioPending) db.prepare("UPDATE tasks SET result=? WHERE id=?").run(`VERIFIED: ${evidence}`, t.id);
+    result = { verified: true, studioVerificationRequired: studioPending };
+    ledger(ledgerId, t.id, name, args, "done", result);
+    return outputText(result);
+  }
+
   if (name === "verify") {
     if (role !== "Tester") throw new Error("Only Tester can verify");
     if (!runHasStudioWork(t.run_id))
       throw new Error(
-        "This run has no Studio evidence. Call codex_inspect and verify_codex instead.",
+        "This run has no Studio evidence. Use verify_creative for design/model edits, or codex_inspect and verify_codex for code changes.",
       );
     const a = z
       .object({ passed: z.boolean(), evidence: z.string().min(20) })
@@ -608,8 +663,10 @@ async function executeTool(t: any, role: Role, call: CodexToolCall) {
 
   if (name !== "list_roblox_studios" && !run.studio_id)
     throw new Error("Select a Studio instance in Games before starting this run.");
+  if (name === "open_cloud_invoke") validateIllustrateUpload(args);
   studio.validate(role, name, args, run.studio_id);
-  if (isMutation(name)) {
+  const writesStudio = isMutation(name) && !(name === "open_cloud_invoke" && (args as { method?: string }).method === "GET");
+  if (writesStudio) {
     const inspection = db
       .prepare("SELECT tool FROM tool_calls WHERE task_id=? AND status='done'")
       .all(t.id) as any[];
@@ -630,7 +687,7 @@ async function executeTool(t: any, role: Role, call: CodexToolCall) {
         "Inspect the existing script or hierarchy with an advertised read tool before making a Studio change. No operation was sent.",
       );
   }
-  if (isMutation(name) && (get("approvalRequired") || operationRisk(name))) {
+  if (writesStudio && (get("approvalRequired") || operationRisk(name))) {
     const approvalId = randomUUID();
     db.prepare(
       "INSERT OR IGNORE INTO approvals(id,task_id,call_id,tool,args,provider) VALUES (?,?,?,?,?,'studio')",
@@ -758,9 +815,11 @@ function promptFor(t: any, run: any, deps: any[]) {
 }
 
 function requiresReadback(taskId: string, run: any) {
+  if (!run.studio_id) return false;
   const evidence = db
     .prepare(
-      "SELECT tool,rowid FROM tool_calls WHERE task_id=? AND status='done' AND studio_id=? AND pin_revision=? ORDER BY rowid",
+      `SELECT tool,rowid FROM tool_calls WHERE task_id=? AND status='done' AND studio_id=? AND pin_revision=?
+        AND (tool!='open_cloud_invoke' OR json_extract(args,'$.method')!='GET') ORDER BY rowid`,
     )
     .all(taskId, run.studio_id, run.studio_pin_revision) as any[];
   const writes = evidence.filter(

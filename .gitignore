@@ -27,3 +27,7 @@ test-results
 # MeshForge local projects and optional Rust build output.
 **/meshforge.sqlite*
 /crates/rblx-mesh-wasm/target/
+
+**/design-studio.sqlite*
+**/illustrate-exports/
+/public/design-runtime/

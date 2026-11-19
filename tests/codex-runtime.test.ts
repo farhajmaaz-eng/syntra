@@ -49,6 +49,43 @@ afterAll(async () => {
 });
 
 describe("Codex as a first-class orchestrated agent", () => {
+  it("runs Frame's local design tools through Codex and lets Tester verify the scene", async () => {
+    store.db.prepare("INSERT INTO runs(id,request,studio_id) VALUES ('frame-run','Create a local UI design','')").run();
+    const frame = store.addTask("frame-run", "Frame", "Design an inventory",
+      "FIXTURE_CALLS_B64: " + Buffer.from(JSON.stringify([
+        { tool: "design_inspect", arguments: {} },
+        { tool: "design_edit", arguments: { revision: 1, actions: [
+          { action: "create", type: "TEXT", name: "InventoryTitle", text: "Inventory" },
+        ] } },
+        { tool: "design_inspect", arguments: {} },
+      ])).toString("base64"), []);
+    const tester = store.addTask("frame-run", "Tester", "Verify editable layers",
+      'FIXTURE_CALLS: [{"tool":"design_inspect","arguments":{}},{"tool":"verify_creative","arguments":{"passed":true,"evidence":"Verified the saved inventory title and editable TEXT layer in Design Studio."}}]', [frame]);
+    await waitFor(() => store.task(tester).status === "completed", 15000);
+    expect(store.task(frame).status).toBe("completed");
+    expect(store.task(tester).result).toContain("VERIFIED:");
+    const evidence = store.db.prepare("SELECT result FROM tool_calls WHERE task_id=? AND tool='design_inspect' AND status='done'").get(tester) as { result: string };
+    expect(evidence.result).toContain("InventoryTitle");
+  }, 20000);
+
+  it("connects standalone Codex sessions to both creative workspaces", async () => {
+    const { codexAction } = await import("../worker/codex-actions");
+    const created = await codexAction("codex/session/create", { title: "Creative session", cwd: project }, runtime.active);
+    const sessionId = created?.session?.id;
+    if (!sessionId) throw new Error("Standalone Codex session was not created.");
+    const prompt = 'FIXTURE_CALLS: [{"tool":"design_inspect","arguments":{}},{"tool":"illustrate_projects","arguments":{}}]';
+    await codexAction("codex/session/turn", { id: sessionId, prompt }, runtime.active);
+    await waitFor(() => Boolean(store.db.prepare(
+      "SELECT id FROM codex_turns WHERE session_id=? AND status='completed'",
+    ).get(sessionId)));
+    const turn = store.db.prepare(
+      "SELECT result FROM codex_turns WHERE session_id=? AND status='completed'",
+    ).get(sessionId) as { result: string };
+    expect(turn.result).toContain("design_inspect:");
+    expect(turn.result).toContain("illustrate_projects:");
+    expect(turn.result).not.toContain("Tool failed");
+  }, 20000);
+
   it("runs a delegated Codex task and independently verifies the real diff", async () => {
     store.db
       .prepare("INSERT INTO runs(id,request,studio_id) VALUES ('codex-run','Fix local module','')")

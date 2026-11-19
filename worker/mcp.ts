@@ -307,8 +307,10 @@ export class Studio {
       throw new StudioCallError(
         "Tool target differs from the pinned Studio instance. Pause the team and review the project’s Studio connection in Games; reconnecting alone does not switch persisted runs.",
       );
-    const input =
-      name === "list_roblox_studios" ? args : { ...args, studio_id: studioId };
+    const cloudWithoutPin = name === "open_cloud_invoke" && !tool.inputSchema?.properties?.studio_id;
+    const input = name === "list_roblox_studios" || cloudWithoutPin
+      ? args
+      : { ...args, studio_id: studioId };
     const checked = validator.getValidator(tool.inputSchema)(input);
     if (!checked.valid)
       throw new StudioCallError(
@@ -335,7 +337,7 @@ export class Studio {
       throw new StudioCallError(
         "This Studio has an unresolved operation. Reconcile it in Reviews before further calls.",
       );
-    const writes = isMutation(name),
+    const writes = isMutation(name) && !(name === "open_cloud_invoke" && args.method === "GET"),
       lock = `studio:${studioId}`;
     const deadline = Date.now() + (get<number>("mcpLockTimeoutMs") || 180000);
     const checkStopped = () => {
@@ -370,10 +372,12 @@ export class Studio {
       // Validate again after waiting: a reconnect can change tools and schemas.
       const input = this.validate(role, name, args, studioId),
         client = this.client!;
-      if (
-        name !== "list_roblox_studios" &&
-        this.tools.some((t) => t.name === "list_roblox_studios")
-      ) {
+      const unpinnedCloud = name === "open_cloud_invoke" && !("studio_id" in input);
+      const canDiscover = this.tools.some((t) => t.name === "list_roblox_studios");
+      if (unpinnedCloud && !canDiscover) {
+        throw new StudioCallError("This Open Cloud tool cannot confirm the target Studio.");
+      }
+      if (name !== "list_roblox_studios" && canDiscover) {
         const discovery = await client.callTool(
           { name: "list_roblox_studios", arguments: {} },
           undefined,
@@ -388,6 +392,9 @@ export class Studio {
           throw new StudioCallError(
             "Studio discovery is unrecognized; refresh instances before executing work",
           );
+        if (unpinnedCloud && (ids.length !== 1 || ids[0] !== studioId)) {
+          throw new StudioCallError("Open Cloud requires only the pinned Studio instance to be open.");
+        }
         const boundTask = task(owner.split(":")[0]);
         if (boundTask) {
           const project: any = db

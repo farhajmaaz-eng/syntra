@@ -191,7 +191,7 @@ export const telemetrySchema = z
       }
   });
 export function operationRisk(tool: string) {
-  return /publish/i.test(tool)
+  return tool === "open_cloud_invoke" || /publish/i.test(tool)
     ? "publication"
     : /generate_(mesh|material|procedural)|purchase|paid/i.test(tool)
       ? "paid operation"

@@ -1,3 +1,4 @@
+import { creativeDefinitions, isCreativeTool, runCreativeTool } from "./creative-tools";
 import { z } from "zod";
 import { get, set, event, db } from "./store";
 import { redact } from "./errors";
@@ -131,7 +132,7 @@ export async function codexAction(
         model: z.string().trim().max(200).optional(),
       })
       .parse(body);
-    const row = await codex.createSession(a);
+    const row = await codex.createSession({ ...a, dynamicTools: creativeDefinitions("Codex") });
     return { ok: true, session: row, sessions: codexSessions() };
   }
   if (path === "codex/session/turn") {
@@ -147,7 +148,14 @@ export async function codexAction(
         "This session is owned by a worker task. Use Tasks to retry or follow up.",
       );
     void codex
-      .runSessionTurn({ sessionId: a.id, prompt: a.prompt })
+      .runSessionTurn({
+        sessionId: a.id,
+        prompt: a.prompt,
+        toolHandler: async (call) => {
+          if (!isCreativeTool(call.tool)) throw new Error("Unknown Syntra creative tool.");
+          return runCreativeTool("Codex", call.tool, call.arguments ?? {});
+        },
+      })
       .catch((error) => {
         db.prepare(
           "UPDATE codex_sessions SET status='error',updated=CURRENT_TIMESTAMP WHERE id=?",
