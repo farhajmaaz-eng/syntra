@@ -29,6 +29,7 @@ export const pitchSections = [
   "socialLoop",
   "cadence",
   "mvp",
+  "validation",
   "risks",
 ] as const;
 export const sectionTitles: Record<string, string> = {
@@ -41,7 +42,8 @@ export const sectionTitles: Record<string, string> = {
   socialLoop: "Social loop",
   cadence: "Content cadence",
   mvp: "MVP scope",
-  risks: "Risks & validation",
+  validation: "Playtest & acceptance criteria",
+  risks: "Risks & open questions",
 };
 export const metricDefinitions = {
   dau: { label: "Daily active users", unit: "players", group: "Players" },
@@ -120,6 +122,13 @@ export const marketSchema = z
             likes: z.number().int().nonnegative().optional(),
             votes: z.number().int().nonnegative().optional(),
             visits: z.number().int().nonnegative().optional(),
+            favorites: z.number().int().nonnegative().optional(),
+            approval: z.number().min(0).max(100).optional(),
+            growth24h: z.number().optional(),
+            provenance: z.partialRecord(
+              z.enum(["players", "visits", "favorites", "approval", "growth24h"]),
+              z.object({ url: webUrl, at: timestamp }),
+            ).optional(),
             url: webUrl.default(""),
           })
           .refine(

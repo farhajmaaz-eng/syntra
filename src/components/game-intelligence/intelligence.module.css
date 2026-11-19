@@ -64,3 +64,15 @@
 .sourcesForm > button, .more { justify-self: start; }
 .empty { padding: 22px; text-align: center; border: 1px dashed var(--border); border-radius: 12px; color: var(--text-secondary); }
 @media (max-width: 820px) { .sourcesForm fieldset { grid-template-columns: minmax(90px, 1fr) minmax(110px, 1fr); } .sourcesForm fieldset label:nth-of-type(3) { grid-column: 1 / -1; } }
+
+.comparisonTable { margin: 12px 0; }
+.comparisonTable th:first-child { text-align: left; }
+.comparisonTable th button { display: inline-flex; vertical-align: middle; margin-inline-start: 4px; color: var(--text-secondary); }
+.comparisonTable td a, .comparisonTable td small { display: block; font-size: 11px; color: var(--text-secondary); }
+.comparisonTable td a:hover { color: var(--accent); }
+.listHeading h3 svg, .comparisonTable a svg { display: inline; vertical-align: text-bottom; }
+.comparisonHandoff { display: grid; gap: 8px; margin-top: 12px; }
+.comparisonHandoff label { display: grid; gap: 4px; color: var(--text-secondary); }
+.comparisonHandoff label span { font-size: 11px; }
+.comparisonHandoff textarea { padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--app-bg); color: var(--text-primary); }
+.comparisonHandoff button { justify-self: start; }

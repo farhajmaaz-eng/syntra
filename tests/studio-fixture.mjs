@@ -42,4 +42,12 @@ server.registerTool(
         : "FAIL",
     }),
 );
+server.registerTool(
+  "execute_luau",
+  { inputSchema: { studio_id: z.string(), code: z.string() } },
+  async ({ code }) => {
+    writeFileSync(process.argv[2] + ".graphics", code);
+    return text({ imported: true });
+  },
+);
 await server.connect(new StdioServerTransport());

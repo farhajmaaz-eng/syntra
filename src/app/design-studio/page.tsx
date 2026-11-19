@@ -1,9 +1,5 @@
-import type { Metadata } from "next";
-import DesignStudioClient from "./studio-client";
-import "./design-studio.css";
-
-export const metadata: Metadata = { title: "Design Studio | Syntra Studio" };
+import { redirect } from "next/navigation";
 
 export default function DesignStudioPage() {
-  return <DesignStudioClient />;
+  redirect("/graphics");
 }

@@ -34,7 +34,7 @@ describe("Persistent Codex workflow", () => {
     await studio.connect();
     await codex.ensureStarted();
     await codex.loginApiKey("sk-fixture-codex-key-1234567890");
-    expect(studio.tools.length).toBe(5);
+    expect(studio.tools.length).toBe(6);
   }, 30000);
 
   it("plans, delegates, gates a real SDK write, verifies evidence and reaches review", async () => {
@@ -162,6 +162,45 @@ describe("Persistent Codex workflow", () => {
     ).rejects.toThrow("cannot use");
     expect(readFileSync(process.env.FIXTURE_PLACE!, "utf8")).not.toBe("bad");
   });
+
+  it("hands a completed Frame board to Builder and sends the generated import through Studio approval", async () => {
+    const runId = "graphics-run";
+    store.db.prepare("INSERT INTO runs(id,request,studio_id) VALUES (?,?,?)")
+      .run(runId, "Install a Penpot interface", "test-studio");
+    const frame = store.addTask(runId, "Frame", "Stage UI", "Inspect and stage");
+    store.db.prepare("UPDATE tasks SET status='completed' WHERE id=?").run(frame);
+    const summary = { boardId: "board", name: "Fixture HUD", revision: "a".repeat(64), warnings: [], transferId: "b".repeat(64) };
+    store.db.prepare("INSERT INTO tool_calls(id,task_id,tool,args,status,result) VALUES (?,?,?,'{}','done',?)")
+      .run("graphics-fixture-stage", frame, "design_stage", JSON.stringify({
+        summary, model: { name: "Fixture HUD", instances: [] },
+      }));
+    const builder = store.addTask(runId, "Builder", "Import UI", calls([
+      { tool: "script_read", arguments: {} },
+      { tool: "design_import", arguments: { sourceTaskId: frame } },
+      { tool: "script_read", arguments: {} },
+    ]), [frame]);
+    await runtime.tick();
+    const deadline = Date.now() + 10_000;
+    while (store.task(builder).status !== "completed" && Date.now() < deadline) {
+      const approval = store.db.prepare("SELECT id,args FROM approvals WHERE task_id=? AND status='pending'").get(builder) as
+        { id: string; args: string } | undefined;
+      if (approval) {
+        expect(approval.args).toContain("test-studio");
+        expect(approval.args).toContain("Fixture HUD");
+        expect(() => readFileSync(process.env.FIXTURE_PLACE! + ".graphics")).toThrow();
+        features.decideApproval({ id: approval.id, approved: true, note: "Fixture import approved" });
+      }
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    expect(store.task(builder).status).toBe("completed");
+    expect(readFileSync(process.env.FIXTURE_PLACE! + ".graphics", "utf8")).toContain("SyntraGraphicsTransfer");
+    expect(store.db.prepare("SELECT tool,studio_id FROM tool_calls WHERE task_id=? AND status='done' ORDER BY rowid").all(builder))
+      .toEqual([
+        { tool: "script_read", studio_id: "test-studio" }, { tool: "execute_luau", studio_id: "test-studio" },
+        { tool: "script_read", studio_id: "test-studio" },
+      ]);
+    store.db.prepare("UPDATE runs SET status='review' WHERE id=?").run(runId);
+  }, 15000);
 
   it("restores queued work and flags interrupted writes after restart", () => {
     const id = store.addTask(

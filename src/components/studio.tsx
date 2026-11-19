@@ -287,7 +287,7 @@ export default function Studio({
       "pitches/save": "Pitch saved",
       "pitches/decision": "Pitch updated",
       "pitches/convert": "Pitch converted to project",
-      "market/import": "Market snapshot imported",
+      "market/import": "Market snapshot saved",
       "telemetry/import": "Telemetry imported",
       "assets/save": "Asset saved",
       "assets/verdict": "Asset verdict recorded",
@@ -597,7 +597,7 @@ export default function Studio({
             focusVersion={taskFocusVersion}
           />
         )}
-        {page === "game-intelligence" && <GameIntelligence />}
+        {page === "game-intelligence" && <GameIntelligence act={act} draft={openNewTask} busy={busy} />}
         {data && page === "games" && (
           <>
             <Link href="/game-intelligence" className="button button-outline">

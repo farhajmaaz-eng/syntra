@@ -4,9 +4,8 @@ import { basename, join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { z } from "zod";
-import type { SceneNode } from "@open-pencil/scene-graph";
-import { decodeDesign, designColor, encodeDesign, layerTypes } from "../src/design-studio/scene";
-import { readDesign, saveDesign } from "../src/design-studio/store";
+import { designEditSchema, designInspectSchema } from "../src/graphics/contracts";
+import { editPenpot, inspectPenpot } from "../src/graphics/penpot";
 import { workspaceDataDirectory } from "../src/lib/workspace-paths";
 import type { Role } from "../src/lib/roles";
 import { createRobloxMcpServer } from "../src/meshforge/mcp";
@@ -20,32 +19,15 @@ const meshWriteTools = ["create_mesh_primitive", "transform_node", "edit_mesh_to
 const meshTools = [...meshReadTools, ...meshWriteTools] as const;
 const id = z.string().trim().min(1).max(200);
 const revision = z.number().int().positive();
-const fields = {
-  name: id.optional(),
-  text: z.string().max(4000).optional(),
-  x: z.number().min(-100000).max(100000).optional(),
-  y: z.number().min(-100000).max(100000).optional(),
-  width: z.number().positive().max(10000).optional(),
-  height: z.number().positive().max(10000).optional(),
-  fill: z.string().regex(/^#[0-9a-f]{6}$/i).optional(),
-  fontSize: z.number().positive().max(500).optional(),
-};
-
 const creativeTools = {
   design_inspect: {
-    schema: z.object({ layerId: id.optional() }).strict(),
-    description: "Inspect the saved Design Studio scene, layer IDs, text, and geometry. Read the revision before editing.",
+    schema: designInspectSchema,
+    description: "Inspect the pinned Syntra Graphics Penpot page and its layers, fills, corner radii and geometry. Read its revision before editing.",
     readers: ["Frame", "Codex", "Lead", "Tester", "Architect"],
   },
   design_edit: {
-    schema: z.object({
-      revision, actions: z.array(z.discriminatedUnion("action", [
-        z.object({ action: z.literal("create"), type: z.enum(layerTypes), parentId: id.optional(), ...fields }).strict(),
-        z.object({ action: z.literal("update"), layerId: id, ...fields }).strict(),
-        z.object({ action: z.literal("delete"), layerId: id }).strict(),
-      ])).min(1).max(40),
-    }).strict(),
-    description: "Apply a revision-checked batch to Design Studio's editable OpenPencil scene. Create frames, rectangles, ellipses, or text, or update and remove existing layers.",
+    schema: designEditSchema,
+    description: "Apply an undoable batch to the pinned Penpot page using a revision from design_inspect. Create boards (FRAME), rectangles, ellipses or text, and style, resize or remove layers. Inspect again after changes.",
     readers: ["Frame", "Codex"],
   },
   illustrate_projects: {
@@ -90,11 +72,6 @@ export function illustrateExportDirectory() {
   return join(workspaceDataDirectory(), "illustrate-exports");
 }
 
-function layerSummary(node: SceneNode) {
-  const { id, parentId, type, name, x, y, width, height, text } = node;
-  return { id, parentId, type, name, x, y, width, height, text: text?.slice(0, 4000) };
-}
-
 async function meshCall(projectId: string, name: string, args: Record<string, unknown>, role: Role) {
   const server = createRobloxMcpServer({
     async loadProject() {
@@ -126,55 +103,10 @@ export async function runCreativeTool(role: Role, name: Name, input: unknown) {
     throw new Error(`${role} cannot use ${name}.`);
   }
   switch (name) {
-    case "design_inspect": {
-      const { layerId } = creativeTools[name].schema.parse(input);
-      const { scene, revision } = readDesign();
-      const graph = decodeDesign(scene);
-      if (layerId) {
-        const layer = graph.getNode(layerId);
-        if (!layer) throw new Error("Design layer not found.");
-        return { revision, layer: layerSummary(layer), children: graph.getChildren(layerId).slice(0, 100).map(layerSummary) };
-      }
-      const nodes = Array.from(graph.getAllNodes());
-      return {
-        revision, layers: nodes.slice(0, 100).map(layerSummary),
-        pages: graph.getPages().map(({ id, name }) => ({ id, name })), totalLayers: nodes.length,
-      };
-    }
-    case "design_edit": {
-      const inputEdit = creativeTools[name].schema.parse(input);
-      const { scene, revision } = readDesign();
-      if (inputEdit.revision !== revision) throw new Error("Design revision changed. Inspect before editing again.");
-      const graph = decodeDesign(scene);
-      const changes = [];
-      for (const action of inputEdit.actions) {
-        if (action.action === "delete") {
-          const layer = graph.getNode(action.layerId);
-          if (!layer || layer.id === graph.rootId || layer.type === "CANVAS") throw new Error("Layer cannot be deleted.");
-          graph.deleteNode(layer.id);
-          changes.push({ deleted: layer.id });
-          continue;
-        }
-        const { name, text, x, y, width, height, fill, fontSize } = action;
-        const layer = action.action === "create" ? undefined : graph.getNode(action.layerId);
-        const type = action.action === "create" ? action.type : layer?.type;
-        if (!type || layer?.id === graph.rootId || type === "CANVAS") throw new Error("Editable layer not found.");
-        if ((text !== undefined || fontSize !== undefined) && type !== "TEXT") throw new Error("Text properties require a TEXT layer.");
-        const patch = Object.fromEntries(Object.entries({
-          name, text, x, y, width, height, fontSize,
-          fills: fill ? [{ type: "SOLID", color: designColor(fill), opacity: 1, visible: true }] : undefined,
-        }).filter(([, value]) => value !== undefined)) as Partial<SceneNode>;
-        if (action.action === "create") {
-          const parentId = action.parentId ?? graph.getPages()[0].id;
-          if (!graph.isContainer(parentId) || parentId === graph.rootId) throw new Error("Choose an existing page or container.");
-          changes.push(layerSummary(graph.createNode(action.type, parentId, patch)));
-        } else {
-          graph.updateNode(action.layerId, patch);
-          changes.push(layerSummary(graph.getNode(action.layerId)!));
-        }
-      }
-      return { ...saveDesign(encodeDesign(graph), revision), changes };
-    }
+    case "design_inspect":
+      return inspectPenpot(creativeTools[name].schema.parse(input).layerId);
+    case "design_edit":
+      return editPenpot(creativeTools[name].schema.parse(input));
     case "illustrate_projects":
       creativeTools[name].schema.parse(input);
       return { projects: listMeshProjects().slice(0, 100) };

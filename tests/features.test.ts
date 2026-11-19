@@ -396,12 +396,47 @@ describe("Sourced studio intelligence", () => {
       ).snapshots[0].quality,
     ).toBe("sampled");
   });
+  it("passes a frozen live comparison through Lead's evidence tool into a pitch", async () => {
+    const { normalize } = await import("../src/game-intelligence/adapters");
+    const { comparisonSnapshot, researchBrief } = await import("../src/game-intelligence/comparison");
+    const captured = Date.now();
+    const observed = captured - 60_000;
+    const first = normalize("roblox", {
+      id: 123, rootPlaceId: 1234, name: "Co-op delivery", playing: 0, visits: 4000, favoritedCount: 20,
+    }, observed)!;
+    const second = normalize("playsurge", {
+      id: 124, name: "Flooded city", players: 250, slug: "flooded-city", change_24h: 0.15,
+    }, observed)!;
+    const unmatched = normalize("bloxhub", { slug: "no-id", name: "No universe ID" }, observed)!;
+    const snapshot = comparisonSnapshot([first, second, unmatched], captured);
+    const imported = features.featureAction("market/import", snapshot) as { id: string };
+    expect(researchBrief(imported.id, "Study co-op")).toContain(imported.id);
+    expect(features.readMarketEvidence(imported.id).games).toMatchObject([
+      { universeId: "123", players: 0, favorites: 20, provenance: { players: { url: "https://www.roblox.com/games/1234", at: new Date(observed).toISOString() } } },
+      { universeId: "124", growth24h: 0.15 },
+    ]);
+    const plan = features.createRequest({
+      gameId: "game", agent: "Lead", reviewPlan: true,
+      objective: calls([
+        { tool: "market_evidence_read", arguments: { snapshotId: imported.id } },
+        { tool: "save_pitch", arguments: { title: "Concept", hook: "A playable delivery loop", sections: { mvp: "One delivery" }, evidence: [
+          { snapshotId: imported.id, universeId: "123" }, { snapshotId: imported.id, universeId: "124" },
+        ] } },
+      ]),
+    });
+    await runtime.tick();
+    await waitFor(() => !!db.prepare("SELECT id FROM pitches WHERE title=?").get("Concept"));
+    await settle();
+    const read = db.prepare("SELECT result FROM tool_calls WHERE task_id=? AND tool=? AND status='done'")
+      .get(plan.taskId, "market_evidence_read") as { result: string };
+    expect(JSON.parse(read.result)).toMatchObject({ id: imported.id, total: 2, games: [{ players: 0 }, { players: 250 }] });
+  });
   it("versions evidence-backed pitches and converts an accepted concept only once", () => {
     const m: any = features.featureAction("market/import", market);
     const draft = {
       title: "Checkpoint concept",
       hook: "A testable cooperative checkpoint loop",
-      sections: { mvp: "One verified level" },
+      sections: { mvp: "One verified level", validation: "Complete one run without retrying the tutorial." },
       evidence: [{ snapshotId: m.id, universeId: "123" }],
     };
     const p = features.savePitch(draft);
@@ -432,6 +467,7 @@ describe("Sourced studio intelligence", () => {
     });
     expect(a.gameId).toBe(b.gameId);
     expect(a.taskId).toBe(b.taskId);
+    expect(store.task(a.taskId).acceptance).toBe(draft.sections.validation);
     expect(
       (db.prepare("SELECT * FROM games WHERE id=?").get(a.gameId) as any).stage,
     ).toBe("concept");

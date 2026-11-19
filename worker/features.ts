@@ -516,7 +516,7 @@ export function featureRead(path: string, query: URLSearchParams): unknown {
       integration: {
         status: "import-only",
         message:
-          "No live market feed is connected. Import an authorized export with its original source and collection time.",
+          "Save a comparison from Game Intelligence or import an authorized export with its original source and collection time.",
       },
     };
   }
@@ -557,6 +557,12 @@ export function featureRead(path: string, query: URLSearchParams): unknown {
     }));
   }
 }
+export function readMarketEvidence(id: string) {
+  const row = db.prepare("SELECT payload FROM market_snapshots WHERE id=?").get(id) as
+    { payload: string } | undefined;
+  if (!row) throw new Error("Market snapshot not found");
+  return { id, ...marketSchema.parse(JSON.parse(row.payload)) };
+}
 export function savePitch(body: unknown, fromAgent = false) {
   const a = pitchSchema.parse(body);
   if (a.gameId) game(a.gameId);
@@ -571,7 +577,7 @@ export function savePitch(body: unknown, fromAgent = false) {
       )
     )
       throw new Error(
-        "Pitch evidence must reference an imported market observation",
+        "Pitch evidence must reference a saved market observation",
       );
   }
   return db.transaction(() => {
@@ -1010,13 +1016,16 @@ export function featureAction(
         );
       }
       let request: any = null;
-      if (a.createTasks)
+      if (a.createTasks) {
+        const design = pitchSchema.parse(JSON.parse(pitch.payload));
         request = createRequest({
           gameId,
-          objective: `Plan the MVP for ${pitch.title}. ${pitch.hook}\nDesign document: ${JSON.stringify(JSON.parse(pitch.payload).sections)}`,
+          objective: `Plan the MVP for ${pitch.title}. ${pitch.hook}\nDesign document: ${JSON.stringify(design.sections)}`,
+          acceptance: design.sections.validation || "",
           reviewPlan: true,
           requestKey: a.requestKey || `pitch:${pitch.id}:v${pitch.version}`,
         });
+      }
       changed();
       return { ok: true, gameId, taskId: request?.taskId };
     })();

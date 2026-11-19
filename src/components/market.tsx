@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowUpRight, BarChart3, Lightbulb, Upload } from "lucide-react";
+import { researchBrief } from "../game-intelligence/comparison";
 import { displayDate } from "@/lib/feature-contracts";
 import { useResource } from "@/lib/use-resource";
 import { Button } from "./ui/button";
@@ -44,6 +45,9 @@ export default function Market({
     const old = previous?.games.find(
       (g: any) => g.universeId === row.universeId,
     );
+    const source = row.provenance?.players, previousSource = old?.provenance?.players;
+    if ((row.provenance || old?.provenance) && (!source || !previousSource ||
+      !source.url || source.url !== previousSource.url || Date.parse(source.at) <= Date.parse(previousSource.at))) return null;
     return comparable && old?.players !== undefined && row.players !== undefined
       ? row.players - old.players
       : null;
@@ -62,8 +66,8 @@ export default function Market({
       sort === "rank"
         ? (a.rank ?? Infinity) - (b.rank ?? Infinity)
         : sort === "likes"
-          ? (b.votes ? b.likes / b.votes : -1) -
-            (a.votes ? a.likes / a.votes : -1)
+          ? (b.approval != null ? b.approval / 100 : b.votes ? b.likes / b.votes : -1) -
+            (a.approval != null ? a.approval / 100 : a.votes ? a.likes / a.votes : -1)
           : sort === "growth"
             ? (growth(b) ?? -Infinity) - (growth(a) ?? -Infinity)
             : (b[sort] ?? -1) - (a[sort] ?? -1),
@@ -118,7 +122,7 @@ export default function Market({
                 · {current.category} · {current.games.length} games
               </>
             ) : (
-              "Import a permitted export with its original source and timestamp. Rankings, players and growth remain empty until real observations are supplied."
+              "Save a comparison from Game Intelligence or import a permitted export."
             )}
           </p>
           <small>
@@ -126,7 +130,7 @@ export default function Market({
               ? comparable
                 ? `Comparing against ${displayDate(previous.fetchedAt)} from the same source, category and quality.`
                 : "Only one comparable snapshot is available. Growth is unknown; missing values are never treated as zero."
-              : "Refresh cadence is manual. No scraping, proprietary analytics access, or live-ranking claim is implied."}
+              : "Saved snapshots keep their original values and observation times."}
           </small>
         </div>
         <Button variant="outline" onClick={resource.refresh}>
@@ -288,7 +292,7 @@ export default function Market({
                           </td>
                           <td>{g.players?.toLocaleString() ?? "—"}</td>
                           <td>
-                            {g.votes && g.likes !== undefined
+                            {g.approval != null ? `${g.approval.toFixed(1)}%` : g.votes && g.likes !== undefined
                               ? `${((g.likes / g.votes) * 100).toFixed(1)}%`
                               : "—"}
                           </td>
@@ -321,9 +325,9 @@ export default function Market({
         ) : (
           <section className="panel">
             <EmptyState icon={<BarChart3 />} title="Bring your market evidence">
-              Use an authorized JSON export. Source rank, players, likes,
-              visits, genre and descriptions are optional; absent metrics stay
-              unknown.
+              <Link href="/game-intelligence" className="text-link">Compare live Roblox experiences <ArrowUpRight size={13} /></Link>
+              <br />
+              You can also import an authorized JSON export.
             </EmptyState>
           </section>
         )}
@@ -364,6 +368,14 @@ export default function Market({
             >
               Open source <ArrowUpRight size={13} />
             </a>
+            {selected.provenance && <ul>
+              {Object.entries(selected.provenance).map(([metric, raw]) => {
+                const source = raw as { url: string; at: string };
+                return <li key={metric}>{metric} · {displayDate(source.at)} · {source.url
+                  ? <a href={source.url} target="_blank" rel="noreferrer">Source <ArrowUpRight size={13} /></a>
+                  : "Syntra observations"}</li>;
+              })}
+            </ul>}
             <Link
               className="text-link"
               href={`/pitches?evidence=${encodeURIComponent(current.id)}&universe=${selected.universeId}`}
@@ -375,9 +387,7 @@ export default function Market({
               onClick={() => {
                 const row = selected;
                 setSelected(null);
-                newTask(
-                  `Research a differentiated game concept using imported snapshot ${current.id}, universe ${row.universeId}, ${row.title}. Observations: ${JSON.stringify(row)}. Source: ${current.source}, collected ${current.fetchedAt}, quality ${current.quality}. Separate observed metrics from hypotheses. Save a pitch with save_pitch and evidence [{snapshotId:"${current.id}",universeId:"${row.universeId}"}]. Do not implement or publish the concept.`,
-                );
+                newTask(researchBrief(current.id, `Focus on the saved evidence for universe ${row.universeId}.`));
               }}
             >
               Ask Lead to research a pitch

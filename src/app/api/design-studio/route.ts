@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DesignConflict, maxDesignBytes, readDesign, saveDesign } from "../../../design-studio/store";
+import { DesignConflict, maxDesignBytes, readDesign, readDesignSince, saveDesign } from "../../../design-studio/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,8 +8,11 @@ const respond = (body: unknown, status = 200) => Response.json(body, {
   status, headers: { "Cache-Control": "no-store" },
 });
 
-export function GET() {
-  return respond(readDesign());
+export function GET(request?: Request) {
+  const known = request ? new URL(request.url).searchParams.get("revision") : null;
+  if (!known || !/^[1-9]\d{0,15}$/.test(known) || !Number.isSafeInteger(Number(known))) return respond(readDesign());
+  const current = readDesignSince(Number(known));
+  return current ? respond(current) : new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
 }
 
 export async function PUT(request: Request) {

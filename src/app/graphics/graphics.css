@@ -1,0 +1,91 @@
+.graphics-workspace {
+  max-width: 1120px;
+  margin-inline: auto;
+  padding: clamp(16px, 4vw, 38px);
+  display: grid;
+  gap: 16px;
+}
+.graphics-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+}
+.graphics-hero,
+.graphics-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: clamp(17px, 3vw, 28px);
+}
+.graphics-hero {
+  background:
+    radial-gradient(ellipse at 88% 0, var(--accent-wash), transparent 64%),
+    var(--surface);
+}
+.graphics-hero h1 {
+  font-size: clamp(32px, 6vw, 54px);
+  line-height: 1.12;
+  letter-spacing: -0.04em;
+  margin: 9px 0;
+}
+.graphics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr));
+  gap: 14px;
+}
+.graphics-card {
+  align-content: start;
+  display: grid;
+  gap: 11px;
+}
+.graphics-card h2,
+.graphics-card p,
+.graphics-hero p {
+  margin: 0;
+}
+.graphics-card p,
+.graphics-hero p {
+  color: var(--text-secondary);
+}
+.graphics-card > svg,
+.graphics-hero > svg,
+.graphics-card a {
+  color: var(--accent);
+}
+.graphics-card button {
+  justify-self: start;
+}
+.graphics-card a svg {
+  display: inline;
+  vertical-align: text-bottom;
+}
+.graphics-card summary {
+  cursor: pointer;
+}
+.graphics-card ol,
+.graphics-card ul {
+  padding-inline-start: 20px;
+  margin-block: 8px;
+}
+.graphics-card code {
+  overflow-wrap: anywhere;
+}
+
+.graphics-connection,
+.graphics-connection label {
+  display: grid;
+  gap: 6px;
+}
+.graphics-connection {
+  margin-block: 10px;
+}
+.graphics-connection input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--app-bg);
+  color: var(--text-primary);
+}

@@ -49,7 +49,7 @@ export const navigation = [
   ["pitches", "Pitches", Lightbulb],
   ["market", "Market", Compass],
   ["illustrate", "Illustrate", Box],
-  ["design-studio", "Design Studio", Palette],
+  ["graphics", "Syntra Graphics", Palette],
   ["game-intelligence", "Game Intelligence", Gauge],
 ] as const;
 
@@ -238,7 +238,7 @@ export default function WorkspaceShell(props: Props) {
       </nav>
       <span className="nav-label">Studio</span>
       <nav aria-label="Studio navigation">
-        {["games", "game-intelligence", "illustrate", "design-studio", "pitches", "market", "library", "logs"].map(navItem)}
+        {["games", "game-intelligence", "illustrate", "graphics", "pitches", "market", "library", "logs"].map(navItem)}
       </nav>
       <section className="sidebar-team" aria-label="Agent team">
         <span className="nav-label">

@@ -6,6 +6,8 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Button } from "../ui/button";
 import { categories, categoryGames, providers, type Catalog, type Category, type Detail, type Game, type Point } from "../../game-intelligence/model";
 import IntelligenceSettings from "./settings";
+import Comparison from "./comparison";
+import { comparisonLimit } from "../../game-intelligence/comparison";
 import styles from "./intelligence.module.css";
 
 const metrics = { playing: "CCU", visits: "Visits", favorites: "Favorites", rating: "Approval", growth: "24h CCU" } as const;
@@ -85,7 +87,17 @@ function Details({ selected, onClose }: { selected: Game; onClose: () => void })
   </section>;
 }
 
-export default function GameIntelligence() {
+export default function GameIntelligence({ act, draft, busy }: {
+  act: (path: string, body: unknown) => Promise<{ id?: string } | undefined>;
+  draft: (prompt: string) => void;
+  busy: boolean;
+}) {
+  const [comparison, setComparison] = useState<Game[]>([]);
+  function toggleComparison(game: Game) {
+    setComparison(current => current.some(entry => entry.key === game.key)
+      ? current.filter(entry => entry.key !== game.key)
+      : current.length < comparisonLimit ? [...current, game] : current);
+  }
   const [data, setData] = useState<Catalog>();
   const [category, setCategory] = useState<Category>("Trending");
   const [input, setInput] = useState("");
@@ -170,6 +182,8 @@ export default function GameIntelligence() {
     </small></div>
     {error && <p className={styles.muted} role="alert">{error}</p>}
     {!query && <p className={styles.muted}>{category === "Rising" ? "Positive 24-hour CCU change from PlaySurge or Syntra observations about a day apart." : category === "Trending" || category === "Up-and-Coming" ? "Provider chart positions. Availability varies by source and region." : "Ranked within the tracked catalog. Counts reflect each provider’s latest available sample."}</p>}
+    {comparison.length > 0 && <Comparison games={comparison} act={act} draft={draft} disabled={busy}
+      clear={() => setComparison([])} remove={key => setComparison(current => current.filter(game => game.key !== key))} />}
     {selected && <Details key={selected.key} selected={selected} onClose={() => setSelected(null)} />}
     {visible.length > 0 ? <div className={styles.tableWrap}><table className={styles.ranking}>
       <thead><tr><th scope="col">#</th><th scope="col">Experience</th>{Object.entries(metrics).map(([key, label]) => <th key={key} scope="col">{label}</th>)}</tr></thead>
@@ -177,6 +191,9 @@ export default function GameIntelligence() {
         <td title={game.rankSources[category] ? providers[game.rankSources[category]].name : undefined}>{sort === "default" && !query && (category === "Trending" || category === "Up-and-Coming") ? game.ranks[category] : i + 1}</td>
         <th scope="row"><button className={styles.gameButton} onClick={() => setSelected(game)} aria-pressed={selected?.key === game.key}><GameIcon game={game} /><span><strong>{game.name}</strong><small>{[game.creator, game.genre].filter(Boolean).join(" · ") || "Roblox experience"}</small></span></button></th>
         {(Object.keys(metrics) as Metric[]).map(field => <td key={field} title={game[field]?.toLocaleString()}>{format(field, game[field])}</td>)}
+        <td><input type="checkbox" aria-label={`Compare ${game.name}`} checked={comparison.some(entry => entry.key === game.key)}
+          disabled={comparison.length >= comparisonLimit && !comparison.some(entry => entry.key === game.key)}
+          onChange={() => toggleComparison(game)} /></td>
       </tr>)}</tbody>
     </table></div> : !loading && !error && <p className={styles.empty}>No games match this view. Change the filters or check the enabled sources.</p>}
     {limit < visible.length && <Button className={styles.more} variant="outline" onClick={() => setLimit(value => value + 40)}>Show 40 more</Button>}

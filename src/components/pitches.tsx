@@ -267,7 +267,7 @@ export default function Pitches({
                         ? `Source rank ${row.rank}. `
                         : ""}
                       {market.data.current.quality} ·{" "}
-                      {displayDate(market.data.current.fetchedAt)}
+                      {displayDate(row.provenance?.players?.at ?? market.data.current.fetchedAt)}
                     </p>
                   )}
                   <Link
@@ -399,7 +399,7 @@ export default function Pitches({
             ))}
             {!!editing.evidence?.length && (
               <p>
-                {editing.evidence.length} imported market observation(s)
+                {editing.evidence.length} saved market observation(s)
                 attached. Keep uncertain interpretation in the design text.
               </p>
             )}

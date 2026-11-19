@@ -30,6 +30,12 @@ export function readDesign() {
   };
 }
 
+export function readDesignSince(revision: number) {
+  const row = storage().prepare("SELECT CASE WHEN revision = ? THEN NULL ELSE scene END AS scene, revision FROM designs WHERE id=?")
+    .get(revision, designId) as { scene: string | null; revision: number };
+  return row.scene === null ? undefined : { scene: row.scene, revision: row.revision };
+}
+
 export function saveDesign(scene: string, revision: number) {
   if (Buffer.byteLength(scene) > maxDesignBytes) throw new Error("Design exceeds 2 MiB.");
   const graph = decodeDesign(scene);

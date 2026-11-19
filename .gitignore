@@ -31,3 +31,5 @@ test-results
 **/design-studio.sqlite*
 **/illustrate-exports/
 /public/design-runtime/
+
+**/penpot-connection.json

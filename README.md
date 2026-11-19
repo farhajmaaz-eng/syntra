@@ -35,7 +35,7 @@ See [Studio connection recovery](docs/STUDIO_CONNECTION_RECOVERY.md) if a connec
 
 ## What’s in the workspace
 
-- **Lead and Team** coordinate the work. Architect plans, Builder writes Luau, Frame designs interfaces in Design Studio, Scenic models in Illustrate, Balance tunes progression, Tester checks results, and Codex handles focused local-repository tasks.
+- **Lead and Team** coordinate the work. Architect plans, Builder writes Luau, Frame designs interfaces in Syntra Graphics, Scenic models in Illustrate, Balance tunes progression, Tester checks results, and Codex handles focused local-repository tasks.
 - **Tasks and Review** show dependencies, status, approval requests, and evidence. Review interrupted operations against the actual project or place before retrying.
 - **Library** includes searchable Roblox Creator Documentation and Syntra playbooks. Add project references or build a brief for an agent. See the [library guide](library/README.md).
 
@@ -45,9 +45,11 @@ Open **Game Intelligence** from the sidebar or from **Games** to browse Trending
 
 Use **Settings → Roblox data sources** to turn providers on or off, set refresh intervals, and edit their catalog endpoints. Syntra reads keyless feeds from [Roblox](https://www.roblox.com/charts), [RoWatcher](https://rowatcher.com/developers), [RobloxGameStats](https://robloxgamestats.com/docs/api), [PlaySurge](https://playsurge.gg/docs), and [BloxHub](https://bloxhub.games/api). RobloxGameStats limits its free API to personal and non-commercial use. Syntra keeps cached results and local observations in `game-intelligence.sqlite` and shows provider status when a feed is interrupted. Lead can search, read rankings, and compare games with source links.
 
+Select up to five experiences in **Game Intelligence** to compare their metrics and observation times side by side. **Draft with Lead** saves the selected observations to **Market** and opens an editable research request. Lead can cite that saved snapshot in a versioned pitch and propose a prototype and playtest criteria. Review the pitch before converting it to project work.
+
 ## Design and model with Codex
 
-Frame reads and edits the shared scene in **Design Studio**. Scenic creates and validates Roblox assets in **Illustrate**, can reuse authorized Roblox assets, and can stage a GLB for a Studio import workflow. In Illustrate, **Studio Export** prepares a supported file for Studio's 3D importer.
+Frame reads and edits the connected Penpot file in **Syntra Graphics**. The workspace exports editable Roblox UI models and can copy supported layers from the previous local archive. See [Syntra Graphics setup](docs/DESIGN_STUDIO.md). Scenic creates and validates Roblox assets in **Illustrate**, can reuse authorized Roblox assets, and can stage a GLB for a Studio import workflow. In Illustrate, **Studio Export** prepares a supported file for Studio's 3D importer.
 
 Syntra's built-in Codex and Scenic agents can use Illustrate directly. For an external Codex CLI session, set the same `SYNTRA_ILLUSTRATE_MCP_KEY` in the Syntra server and CLI environments. Open the project in Illustrate, select **Connect Codex**, and copy the project-scoped command. Keep the key in your environment.
 

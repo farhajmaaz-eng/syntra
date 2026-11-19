@@ -1,23 +1,26 @@
 import { SceneGraph, type SceneNode } from "@open-pencil/scene-graph";
-import { z } from "zod";
 
 const nodeTypes = [
   "CANVAS", "FRAME", "RECTANGLE", "ROUNDED_RECTANGLE", "ELLIPSE", "TEXT", "LINE", "STAR",
   "POLYGON", "VECTOR", "BOOLEAN_OPERATION", "GROUP", "SECTION", "COMPONENT",
   "COMPONENT_SET", "INSTANCE", "CONNECTOR", "SHAPE_WITH_TEXT",
 ] as const;
-const nodeShape = z.looseObject({
-  id: z.string().min(1).max(200),
-  parentId: z.string().max(200).nullable(),
-  childIds: z.array(z.string().max(200)).max(2000),
-  type: z.enum(nodeTypes),
-  name: z.string().max(200),
-  x: z.number(), y: z.number(), width: z.number(), height: z.number(),
-});
-const snapshotShape = z.object({
-  rootId: z.string().min(1).max(200),
-  nodes: z.array(nodeShape).min(2).max(2000),
-});
+const validNodeTypes = new Set<string>(nodeTypes);
+
+function validId(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 200;
+}
+
+function isSceneNode(value: unknown): value is SceneNode {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const node = value as Partial<SceneNode>;
+  return validId(node.id) && (node.parentId === null || validId(node.parentId)) &&
+    Array.isArray(node.childIds) && node.childIds.length <= 2000 && node.childIds.every(validId) &&
+    typeof node.type === "string" && validNodeTypes.has(node.type) &&
+    typeof node.name === "string" && node.name.length <= 200 &&
+    Number.isFinite(node.x) && Number.isFinite(node.y) &&
+    Number.isFinite(node.width) && Number.isFinite(node.height);
+}
 
 export function encodeDesign(graph: SceneGraph) {
   return JSON.stringify({
@@ -28,15 +31,25 @@ export function encodeDesign(graph: SceneGraph) {
   );
 }
 
+function restoreDocumentValue(key: string, value: unknown) {
+  if (key === "__proto__" || key === "constructor" || key === "prototype") return undefined;
+  if (value && typeof value === "object" && "syntraBytes" in value &&
+      Array.isArray(value.syntraBytes) && Object.keys(value).length === 1) {
+    return Uint8Array.from(value.syntraBytes);
+  }
+  return value;
+}
+
 export function decodeDesign(serialized: string) {
-  const snapshot = snapshotShape.parse(JSON.parse(serialized, (key, value: unknown) => {
-    if (key === "__proto__" || key === "constructor" || key === "prototype") return undefined;
-    if (value && typeof value === "object" && "syntraBytes" in value &&
-        Array.isArray(value.syntraBytes) && Object.keys(value).length === 1) {
-      return Uint8Array.from(value.syntraBytes);
-    }
-    return value;
-  }));
+  // Plain scenes can use the native parser without a JS callback for every property.
+  // Unicode escapes can spell a special key, so those documents also use the reviver.
+  const needsReviver = /\\u|"(?:__proto__|constructor|prototype|syntraBytes)"\s*:/.test(serialized);
+  const snapshot: { rootId?: unknown; nodes?: unknown } | null =
+    JSON.parse(serialized, needsReviver ? restoreDocumentValue : undefined);
+  if (!snapshot || !validId(snapshot.rootId) || !Array.isArray(snapshot.nodes) ||
+      snapshot.nodes.length < 2 || snapshot.nodes.length > 2000 || !snapshot.nodes.every(isSceneNode)) {
+    throw new Error("Invalid Design Studio document or layer fields.");
+  }
   const graph = new SceneGraph();
   const indexed = new Map(snapshot.nodes.map((node) => [node.id, node]));
   const root = indexed.get(snapshot.rootId);

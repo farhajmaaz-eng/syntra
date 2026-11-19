@@ -5,7 +5,7 @@ import { basename, join } from "node:path";
 import { SceneGraph } from "@open-pencil/scene-graph";
 import { GET, PUT } from "../src/app/api/design-studio/route";
 import { decodeDesign, encodeDesign } from "../src/design-studio/scene";
-import { readDesign } from "../src/design-studio/store";
+import { readDesign, saveDesign } from "../src/design-studio/store";
 import { creativeDefinitions, runCreativeTool, validateIllustrateUpload } from "../worker/creative-tools";
 
 const directory = mkdtempSync(join(tmpdir(), "syntra-creative-"));
@@ -20,27 +20,39 @@ it("round-trips the real scene graph and rejects unreachable duplicate nodes", (
   const restored = decodeDesign(encodeDesign(graph));
   expect(restored.getChildren(frame.id).map(({ id }) => id)).toEqual([text.id]);
   expect(restored.getNode(text.id)?.text).toBe("100 credits");
+  const payload = JSON.parse(encodeDesign(graph));
+  const textNode = payload.nodes.find((node: { id: string }) => node.id === text.id);
+  textNode.sceneTestData = JSON.parse('{"__proto__":{"injected":true}}');
+  const escapedKey = JSON.stringify(payload).replace('"__proto__"', '"__pro\\u0074o__"');
+  const sanitized = JSON.parse(encodeDesign(decodeDesign(escapedKey)));
+  expect(sanitized.nodes.find((node: { id: string }) => node.id === text.id).sceneTestData).toEqual({});
+  textNode.sceneTestBytes = { syntraBytes: [10, 20] };
+  const roundTrip = JSON.parse(encodeDesign(decodeDesign(JSON.stringify(payload))));
+  expect(roundTrip.nodes.find((node: { id: string }) => node.id === text.id).sceneTestBytes)
+    .toEqual({ syntraBytes: [10, 20] });
   const broken = JSON.parse(encodeDesign(graph));
   broken.nodes.push(broken.nodes.at(-1));
   expect(() => decodeDesign(JSON.stringify(broken))).toThrow();
+  for (const invalid of [{ x: "12" }, { width: null }, { type: "UNKNOWN" }, { name: "x".repeat(201) }]) {
+    const document = JSON.parse(encodeDesign(graph));
+    Object.assign(document.nodes[0], invalid);
+    expect(() => decodeDesign(JSON.stringify(document))).toThrow();
+  }
 });
 
-it("shares revision-checked scene edits between Frame, Tester and the browser", async () => {
+it("retains revision-checked legacy design archives for migration", async () => {
   const visible = await GET().json();
-  const inspected = await runCreativeTool("Frame", "design_inspect", {});
-  expect(inspected.revision).toBe(visible.revision);
-  const result = await runCreativeTool("Frame", "design_edit", {
-    revision: visible.revision,
-    actions: [{ action: "create", type: "TEXT", text: "Inventory", width: 180, height: 40, fontSize: 18, fill: "#e3c99c" }],
+  const poll = (revision: number) => GET(new Request(`http://localhost/api/design-studio?revision=${revision}`));
+  const unchanged = poll(visible.revision);
+  expect(unchanged.status).toBe(204);
+  expect(await unchanged.text()).toBe("");
+  const graph = decodeDesign(visible.scene);
+  graph.createNode("TEXT", graph.getPages()[0].id, { name: "Inventory", text: "Inventory" });
+  const result = saveDesign(encodeDesign(graph), visible.revision);
+  expect(await poll(visible.revision).json()).toMatchObject({
+    revision: result.revision, scene: expect.stringContaining("Inventory"),
   });
-  const tester = await runCreativeTool("Tester", "design_inspect", {});
-  expect(tester.revision).toBe(result.revision);
-  expect(tester.layers).toContainEqual(expect.objectContaining({ type: "TEXT", text: "Inventory" }));
-  await expect(runCreativeTool("Scenic", "design_edit", {})).rejects.toThrow(/cannot use/);
-  await expect(runCreativeTool("Frame", "design_edit", {
-    revision: visible.revision,
-    actions: [{ action: "create", type: "FRAME" }],
-  })).rejects.toThrow(/revision changed/);
+  expect(poll(result.revision).status).toBe(204);
   const stale = await PUT(new Request("http://localhost:3000/api/design-studio", {
     method: "PUT",
     headers: {
@@ -78,20 +90,6 @@ it("lets Scenic create via actual MCP, stages a GLB and constrains cloud uploads
   expect(() => validateIllustrateUpload({ ...upload, files: { fileContent: join(directory, basename(artifact.filepath)) } })).toThrow();
   writeFileSync(artifact.filepath, "glTFinvalid bytes here");
   expect(() => validateIllustrateUpload(upload)).toThrow();
-});
-
-it("streams the versioned CanvasKit module with an immutable cache policy", async () => {
-  const { GET: asset } = await import("../src/app/api/design-assets/[asset]/route");
-  const { canvasWasmUrl } = await import("../src/design-studio/assets");
-  const response = await asset(new Request("http://localhost" + canvasWasmUrl), {
-    params: Promise.resolve({ asset: "canvaskit.wasm" }),
-  });
-  expect(response.headers.get("content-type")).toBe("application/wasm");
-  expect(response.headers.get("cache-control")).toContain("immutable");
-  const reader = response.body!.getReader();
-  const { value } = await reader.read();
-  expect(Array.from(value!.slice(0, 4))).toEqual([0, 97, 115, 109]);
-  await reader.cancel();
 });
 
 it("connects an MCP SDK client to the authenticated Illustrate endpoint", async () => {

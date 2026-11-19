@@ -25,7 +25,7 @@ export default function CommandPalette({
     ["Games", "/games"],
     ["Illustrate", "/illustrate"],
     ["Game Intelligence", "/game-intelligence"],
-    ["Design Studio", "/design-studio"],
+    ["Syntra Graphics", "/graphics"],
     ["Library", "/library"],
     ["Reviews", "/reviews"],
     ["Activity logs", "/logs"],
