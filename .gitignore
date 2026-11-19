@@ -23,3 +23,7 @@ test-results
 
 # Generated browser smoke screenshots.
 /artifacts/
+
+# MeshForge local projects and optional Rust build output.
+**/meshforge.sqlite*
+/crates/rblx-mesh-wasm/target/

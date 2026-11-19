@@ -23,6 +23,7 @@ export default function CommandPalette({
     ["Team", "/team"],
     ["Task board", "/tasks"],
     ["Games", "/games"],
+    ["Illustrate", "/illustrate"],
     ["Library", "/library"],
     ["Reviews", "/reviews"],
     ["Activity logs", "/logs"],

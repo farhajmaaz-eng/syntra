@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   Activity,
   BookOpen,
+  Box,
   ChevronDown,
   Cpu,
   Download,
@@ -46,6 +47,7 @@ export const navigation = [
   ["settings", "Settings", Settings],
   ["pitches", "Pitches", Lightbulb],
   ["market", "Market", Compass],
+  ["illustrate", "Illustrate", Box],
 ] as const;
 
 export function UsagePanel({
@@ -190,7 +192,7 @@ export default function WorkspaceShell(props: Props) {
         className={`nav-item ${page === id ? "active" : ""}`}
         aria-label={label}
         aria-current={page === id ? "page" : undefined}
-        title={`${label} · Alt+${navigation.indexOf(entry) + 1}`}
+        title={navigation.indexOf(entry) < 9 ? `${label} · Alt+${navigation.indexOf(entry) + 1}` : label}
         onClick={() => mobileNav.current?.close()}
       >
         <Icon size={18} />
@@ -233,7 +235,7 @@ export default function WorkspaceShell(props: Props) {
       </nav>
       <span className="nav-label">Studio</span>
       <nav aria-label="Studio navigation">
-        {["games", "pitches", "market", "library", "logs"].map(navItem)}
+        {["games", "illustrate", "pitches", "market", "library", "logs"].map(navItem)}
       </nav>
       <section className="sidebar-team" aria-label="Agent team">
         <span className="nav-label">

@@ -1,0 +1,97 @@
+.meshforge,
+.meshforge-loading {
+  max-width: none;
+  padding: 0;
+  width: 100%;
+  height: 100dvh;
+  color: var(--text-primary);
+  background: var(--app-bg);
+  font: 13px/1.5 var(--sans);
+}
+.meshforge {
+  --mesh-accent-fill: color-mix(in srgb, var(--accent) 30%, var(--surface));
+}
+.meshforge-loading {
+  display: grid;
+  place-items: center;
+  color: var(--text-secondary);
+}
+.meshforge .font-mono {
+  font-family: var(--mono);
+}
+.meshforge-header {
+  min-height: 48px;
+  padding: 6px 12px;
+  gap: 8px;
+}
+.meshforge-toolbar-group {
+  min-width: 0;
+}
+.meshforge-back {
+  color: var(--accent);
+  border-radius: 8px;
+}
+.meshforge-back:hover {
+  background: var(--accent-wash);
+}
+.meshforge .meshforge-export {
+  background: linear-gradient(145deg, var(--accent-strong), var(--accent));
+  color: #151218;
+  font-weight: 650;
+}
+.meshforge :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.meshforge-editor-body {
+  position: relative;
+}
+.meshforge-error {
+  padding: 6px 14px;
+  color: var(--danger);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border);
+}
+.meshforge-viewport-hud {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+@media (max-width: 800px) {
+  .meshforge-header {
+    flex-wrap: wrap;
+  }
+  .meshforge-toolbar-group {
+    flex-wrap: wrap;
+  }
+  .meshforge #left-tool-outliner-sidebar,
+  .meshforge #right-properties-inspector {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    max-width: calc(100% - 48px);
+    z-index: 15;
+    box-shadow: 0 12px 35px rgb(0 0 0 / 45%);
+  }
+  .meshforge #left-tool-outliner-sidebar {
+    left: 0;
+  }
+  .meshforge #right-properties-inspector {
+    right: 0;
+  }
+}
+
+.meshforge-dialog {
+  margin: auto;
+  width: min(32rem, calc(100% - 2rem));
+  max-height: calc(100dvh - 2rem);
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  background: var(--surface);
+  box-shadow: 0 20px 60px rgb(0 0 0 / 55%);
+}
+.meshforge-dialog::backdrop {
+  background: rgb(0 0 0 / 65%);
+}
