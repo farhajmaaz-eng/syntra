@@ -42,29 +42,33 @@ jobs:
           workspaces: src-tauri
           cache-on-failure: "true"
       - run: npm ci
-      - run: npm run build
+      - run: npm run build -- --webpack
       - run: npm test -- --maxWorkers=1 tests/runtime-audit.test.ts tests/meshforge.test.ts
-      - name: Stage the production server and Windows Node runtime
-        run: node desktop/make-resources.mjs
+      - name: Stage the production server and Windows Node runtime outside the checkout
+        shell: pwsh
+        run: |
+          $stage = Join-Path $env:RUNNER_TEMP "SyntraPackage"
+          node desktop/make-resources.mjs (Join-Path $stage "app")
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "SYNTRA_WINDOWS_STAGE=$stage" >> $env:GITHUB_ENV
       - name: Include the bundled Node license
         shell: pwsh
         run: |
           $license = Join-Path (Split-Path (node -p process.execPath)) "LICENSE"
           if (Test-Path $license) {
-            Copy-Item $license src-tauri/runtime/NODE-LICENSE.txt
+            Copy-Item $license (Join-Path $env:SYNTRA_WINDOWS_STAGE "NODE-LICENSE.txt")
           } else {
             $version = node --version
-            Invoke-WebRequest "https://raw.githubusercontent.com/nodejs/node/$version/LICENSE" -OutFile src-tauri/runtime/NODE-LICENSE.txt
+            Invoke-WebRequest "https://raw.githubusercontent.com/nodejs/node/$version/LICENSE" -OutFile (Join-Path $env:SYNTRA_WINDOWS_STAGE "NODE-LICENSE.txt")
           }
       - name: Test production frontend, backend, Codex, SQLite and WASM
-        run: node desktop/smoke.mjs src-tauri/runtime/app
+        shell: pwsh
+        run: |
+          node desktop/smoke.mjs (Join-Path $env:SYNTRA_WINDOWS_STAGE "app")
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Move-Item $env:SYNTRA_WINDOWS_STAGE src-tauri/runtime
       - name: Build the Windows installer
         run: npx --yes @tauri-apps/cli@2.12.6 build --bundles nsis --target x86_64-pc-windows-msvc --ci
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Syntra-Desktop-Windows-x64
-          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
-          if-no-files-found: error
       - name: Install and launch the desktop application
         shell: pwsh
         run: |
@@ -91,3 +95,8 @@ jobs:
             $log = Join-Path $dataDir "desktop.log"
             if (Test-Path $log) { Get-Content $log -Tail 60 }
           }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Syntra-Desktop-Windows-x64
+          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error

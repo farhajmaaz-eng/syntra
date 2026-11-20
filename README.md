@@ -77,7 +77,7 @@ The Windows workflow builds the production Next.js frontend, stages the desktop 
 
 ```sh
 npm ci
-npm run build
+npm run build -- --webpack
 node desktop/make-resources.mjs
 node desktop/smoke.mjs
 npx --yes @tauri-apps/cli@2.12.6 build --bundles nsis --target x86_64-pc-windows-msvc
