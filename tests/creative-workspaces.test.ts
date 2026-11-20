@@ -41,7 +41,7 @@ it("round-trips the real scene graph and rejects unreachable duplicate nodes", (
 });
 
 it("retains revision-checked legacy design archives for migration", async () => {
-  const visible = await GET().json();
+  const visible = await GET(new Request("http://localhost:3000/api/design-studio")).json();
   const poll = (revision: number) => GET(new Request(`http://localhost/api/design-studio?revision=${revision}`));
   const unchanged = poll(visible.revision);
   expect(unchanged.status).toBe(204);

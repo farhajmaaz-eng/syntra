@@ -8,8 +8,8 @@ const respond = (body: unknown, status = 200) => Response.json(body, {
   status, headers: { "Cache-Control": "no-store" },
 });
 
-export function GET(request?: Request) {
-  const known = request ? new URL(request.url).searchParams.get("revision") : null;
+export function GET(request: Request) {
+  const known = new URL(request.url).searchParams.get("revision");
   if (!known || !/^[1-9]\d{0,15}$/.test(known) || !Number.isSafeInteger(Number(known))) return respond(readDesign());
   const current = readDesignSince(Number(known));
   return current ? respond(current) : new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
