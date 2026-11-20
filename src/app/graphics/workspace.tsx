@@ -118,107 +118,74 @@ export default function GraphicsWorkspace() {
         </p>
       )}
       <div className="graphics-grid">
-        <section className="graphics-card">
+        <section className="graphics-card graphics-connect-card">
           <Link2 size={22} aria-hidden />
-          <h2>Frame and Penpot</h2>
-          <p>
-            Open the connected Penpot file and keep its MCP session active while
-            Frame works. Use Penpot’s editor for fills, corners, components,
-            layouts, and design tokens.
-          </p>
-          <Button
-            variant="outline"
-            disabled={!workspace?.configured || Boolean(busy)}
-            onClick={() =>
-              void perform("check", async () => {
-                const result = await request<{ page: string; layers: number }>(
-                  "?op=connect",
-                );
+          <h2>Connect Penpot</h2>
+          <form
+            className="graphics-connection"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const form = event.currentTarget;
+              const data = Object.fromEntries(new FormData(form));
+              void perform("connect", async () => {
+                const saved = await request<
+                  Pick<Workspace, "url" | "configured"> & { page: string }
+                >("", "PUT", data);
+                const serverUrl = form.elements.namedItem("mcpUrl");
+                if (serverUrl instanceof HTMLInputElement) serverUrl.value = "";
+                setWorkspace((previous) => ({
+                  url: saved.url,
+                  configured: saved.configured,
+                  legacy: previous?.legacy ?? { layers: 0, warnings: [] },
+                }));
                 setStatus(
-                  `Connected to ${result.page} · ${result.layers} layers.`,
+                  `Connected to ${saved.page}. Keep the Penpot tab open while Frame works.`,
                 );
-              })
-            }
+              });
+            }}
           >
-            {busy === "check" ? "Checking…" : "Check connection"}
-          </Button>
-          <details>
-            <summary>
-              {workspace?.configured
-                ? "Update Penpot connection"
-                : "Connect a Penpot file"}
-            </summary>
-            <form
-              className="graphics-connection"
-              onSubmit={(event) => {
-                event.preventDefault();
-                const form = event.currentTarget;
-                const data = Object.fromEntries(new FormData(form));
-                void perform("save", async () => {
-                  const saved = await request<
-                    Pick<Workspace, "url" | "configured">
-                  >("", "PUT", data);
-                  form.reset();
-                  setWorkspace((previous) => ({
-                    ...saved,
-                    legacy: previous?.legacy ?? { layers: 0, warnings: [] },
-                  }));
-                  setStatus(
-                    "Connection saved. Open the file in Penpot and check the connection.",
-                  );
-                });
-              }}
-            >
-              <label>
-                Penpot editor URL
-                <input
-                  type="url"
-                  name="fileUrl"
-                  required
-                  maxLength={3000}
-                  defaultValue={workspace?.configured ? workspace.url : ""}
-                  placeholder="https://design.penpot.app/#/workspace?…"
-                />
-              </label>
-              <label>
-                Penpot MCP server URL
-                <input
-                  type="password"
-                  name="mcpUrl"
-                  required={!workspace?.configured}
-                  maxLength={3000}
-                  autoComplete="off"
-                  placeholder={
-                    workspace?.configured
-                      ? "Leave blank to keep the saved URL"
-                      : "Copy from Penpot’s Integrations settings"
-                  }
-                />
-              </label>
-              <label>
-                Session ID
-                <input
-                  name="sessionId"
-                  required
-                  maxLength={200}
-                  autoComplete="off"
-                  placeholder="Copy from the MCP menu in the open Penpot file"
-                />
-              </label>
-              <Button type="submit" size="sm" disabled={Boolean(busy)}>
-                {busy === "save" ? "Saving…" : "Save connection"}
-              </Button>
-            </form>
-            <a
-              href="https://help.penpot.dev/mcp/"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Penpot MCP setup <ArrowUpRight size={14} />
-            </a>
-          </details>
+            <label>
+              Server URL
+              <small>
+                In Penpot, go to Your account → Integrations → MCP Server.
+                Enable it, generate an MCP key if prompted, then choose Copy server URL.
+              </small>
+              <input
+                type="password"
+                name="mcpUrl"
+                required={!workspace?.configured}
+                maxLength={3000}
+                autoComplete="off"
+                placeholder={workspace?.configured ? "Leave blank to use the saved URL" : undefined}
+              />
+            </label>
+            <label>
+              Penpot file address
+              <small>
+                Open the page you want to use. Choose MCP → Connect, then
+                paste the address from your browser.
+              </small>
+              <input
+                type="url"
+                name="fileUrl"
+                required
+                maxLength={3000}
+                defaultValue={workspace?.configured ? workspace.url : ""}
+              />
+            </label>
+            <p className="graphics-connection-note">
+              Keep MCP connected only in the Penpot tab you want to use.
+              Choose MCP → Disconnect in any other connected tabs.
+            </p>
+            <Button type="submit" size="sm" disabled={Boolean(busy) || !workspace}>
+              {busy === "connect" ? "Connecting…" : "Connect"}
+            </Button>
+          </form>
+          <a href="https://help.penpot.dev/mcp/" target="_blank" rel="noreferrer">
+            Penpot MCP setup <ArrowUpRight size={14} />
+          </a>
         </section>
-        <section className="graphics-card">
+        <section className="graphics-card graphics-export-card">
           <Download size={22} aria-hidden />
           <h2>Roblox UI export</h2>
           <p>

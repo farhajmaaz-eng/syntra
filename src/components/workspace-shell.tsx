@@ -218,9 +218,7 @@ export default function WorkspaceShell(props: Props) {
         <span className="brand-symbol">
           <Cpu size={18} />
         </span>
-        <strong>
-          syntra<span>studio</span>
-        </strong>
+        <strong>Syntra</strong>
       </Link>
       <button
         className="workspace-search"
@@ -234,11 +232,19 @@ export default function WorkspaceShell(props: Props) {
         <kbd>⌘ K</kbd>
       </button>
       <nav aria-label="Main navigation">
-        {["home", "chat", "team", "tasks", "reviews"].map(navItem)}
+        {["home", "chat", "tasks", "reviews", "team"].map(navItem)}
       </nav>
-      <span className="nav-label">Studio</span>
-      <nav aria-label="Studio navigation">
-        {["games", "game-intelligence", "illustrate", "graphics", "pitches", "market", "library", "logs"].map(navItem)}
+      <span className="nav-label">Build</span>
+      <nav aria-label="Build navigation">
+        {["games", "graphics", "illustrate", "codex"].map(navItem)}
+      </nav>
+      <span className="nav-label">Research</span>
+      <nav aria-label="Research navigation">
+        {["game-intelligence", "market", "pitches", "library"].map(navItem)}
+      </nav>
+      <span className="nav-label">Workspace</span>
+      <nav aria-label="Workspace navigation">
+        {["logs", "settings"].map(navItem)}
       </nav>
       <section className="sidebar-team" aria-label="Agent team">
         <span className="nav-label">
@@ -287,7 +293,6 @@ export default function WorkspaceShell(props: Props) {
         >
           <Download size={16} /> Download diagnostics
         </button>
-        {navItem("settings")}
         <Link
           href="/team"
           className="agent-activity-status"
@@ -380,6 +385,10 @@ export default function WorkspaceShell(props: Props) {
                 ))}
               </CustomSelect>
             </div>
+            <span className="breadcrumb-slash">/</span>
+            <span className="breadcrumb-page">{title}</span>
+          </div>
+          <div className="topbar-right">
             {attention > 0 && (
               <Link
                 href={
@@ -392,14 +401,12 @@ export default function WorkspaceShell(props: Props) {
                         : "/tasks"
                 }
                 className="attention-chip"
+                aria-label={`${attention} items need your attention`}
               >
-                <span>{attention}</span> need your attention
+                <span>{attention}</span>
+                <span className="attention-chip-label">Need attention</span>
               </Link>
             )}
-            <span className="breadcrumb-slash">/</span>
-            <span className="breadcrumb-page">{title}</span>
-          </div>
-          <div className="topbar-right">
             <span
               className={`connection ${connection === "live" && data && !syncError ? "is-live" : ""}`}
               title={
@@ -444,7 +451,7 @@ export default function WorkspaceShell(props: Props) {
               }}
             >
               <RefreshCw size={14} className={refreshing ? "spin" : ""} />
-              <span>Refresh numbers</span>
+              <span>Refresh</span>
             </button>
             <button
               className="icon-link toolbar-search"

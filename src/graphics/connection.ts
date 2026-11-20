@@ -20,7 +20,8 @@ const settingsSchema = z.strictObject({
   sessionId: z
     .string()
     .trim()
-    .regex(/^[a-z0-9_-]{1,200}$/i, "Paste the session ID from the Penpot tab."),
+    .regex(/^[a-z0-9_-]{0,200}$/i, "Invalid Penpot session ID.")
+    .default(""),
 });
 
 function urlFrom(value: string) {
@@ -44,11 +45,11 @@ function fileFrom(value: string) {
     pageId = params.get("page-id");
   if (!fileId || !uuid.test(fileId) || !pageId || !uuid.test(pageId)) {
     throw new Error(
-      "Paste the full Penpot editor URL containing a file ID and page ID.",
+      "Open a page in your Penpot file and paste the full address from the browser.",
     );
   }
   if (params.has("userToken") || url.searchParams.has("userToken")) {
-    throw new Error("Paste the editor page address in the file URL field.");
+    throw new Error("Paste the address from the browser into Penpot file address.");
   }
   return { url: url.href, fileId, pageId };
 }
@@ -79,7 +80,7 @@ export function graphicsWorkspace() {
     : { url: defaultUrl, fileId: null, pageId: null };
   return {
     ...file,
-    configured: Boolean(file.fileId && config.mcpUrl && config.sessionId),
+    configured: Boolean(file.fileId && config.mcpUrl),
   };
 }
 
@@ -92,7 +93,7 @@ function validateConnection(config: z.infer<typeof settingsSchema>) {
     (loopback(mcp) && mcp.pathname === "/mcp")
   )) {
     throw new Error(
-      "Use the MCP URL from the same Penpot instance or a local /mcp endpoint.",
+      "Use the Server URL from the same Penpot site as your file, or the local Penpot MCP server URL.",
     );
   }
   return { file, mcp, sessionId: config.sessionId };
@@ -100,24 +101,30 @@ function validateConnection(config: z.infer<typeof settingsSchema>) {
 
 export function penpotConnection() {
   const config = readConnection();
-  if (!config.fileUrl || !config.mcpUrl || !config.sessionId)
+  if (!config.fileUrl || !config.mcpUrl)
     throw new Error("Connect a Penpot file in Syntra Graphics first.");
   return validateConnection(settingsSchema.parse(config));
 }
 
-export function saveGraphicsConnection(raw: unknown) {
+export function prepareGraphicsConnection(raw: unknown) {
   const candidate = z
     .strictObject({
       fileUrl: z.string(),
       mcpUrl: z.string(),
-      sessionId: z.string(),
+      sessionId: z.string().optional(),
     })
     .parse(raw);
   const config = settingsSchema.parse({
     ...candidate,
     mcpUrl: candidate.mcpUrl.trim() || readConnection().mcpUrl,
   });
-  const { file } = validateConnection(config);
+  return { config, connection: validateConnection(config) };
+}
+
+export function saveGraphicsConnection({
+  config,
+  connection: { file },
+}: ReturnType<typeof prepareGraphicsConnection>) {
   const dir = workspaceDataDirectory();
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const temporary = join(dir, `penpot-connection.${randomUUID()}.tmp`);

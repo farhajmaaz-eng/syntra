@@ -37,7 +37,7 @@ export function Appearance({
                   <span />
                   <strong>
                     {theme === "obsidian"
-                      ? "Obsidian"
+                      ? "Amber"
                       : theme === "nord"
                         ? "Nord"
                         : theme === "graphite"

@@ -4,12 +4,15 @@
 
 ## Connect Penpot
 
-1. Open the file and page you want Frame to edit in Penpot. Copy the editor URL, including the `file-id` and `page-id`.
-2. Connect the file to Penpot’s official MCP server and copy its session ID. [Penpot MCP setup](https://help.penpot.dev/mcp/)
-3. In Syntra Graphics, open **Connect a Penpot file**, paste the editor URL, the MCP server URL, and the session ID, then choose **Save connection**. Use the remote URL supplied by Penpot or a local address such as `http://127.0.0.1:4401/mcp`.
-4. Choose **Check connection** and keep the connected tab open while agents work. You can update the session ID from the same form.
+1. In Penpot, go to **Your account → Integrations → MCP Server**. Enable it, generate an MCP key if prompted, choose **Copy server URL**, and paste it into **Server URL** in Syntra Graphics.
+2. Open the Penpot page you want to use. Choose **MCP → Connect** in the file toolbar, then paste the address from your browser into **Penpot file address**.
+3. Choose **Connect** in Syntra. Syntra checks the page before saving. Keep the Penpot tab open while agents work.
 
-Syntra stores the connection in a private file in the workspace data directory. The MCP server URL can contain a key and should be treated like a password. For scripted deployments, set `SYNTRA_PENPOT_FILE_URL`, `SYNTRA_PENPOT_MCP_URL`, and `SYNTRA_PENPOT_SESSION_ID` as defaults. Quote editor URLs in `.env` so the file and page fragment is preserved.
+Keep only the Penpot tab you want to use connected. If more than one tab is connected, choose **MCP → Disconnect** in the other tabs and try again. [Penpot MCP setup](https://help.penpot.dev/mcp/)
+
+Syntra stores the connection in a private file in the workspace data directory. Treat the Server URL like a password because it can contain a key. For scripted deployments, set `SYNTRA_PENPOT_FILE_URL` and `SYNTRA_PENPOT_MCP_URL` as defaults, with `SYNTRA_PENPOT_SESSION_ID` when needed. Quote the Penpot file address in `.env` to preserve the full address.
+
+For a local MCP server, connect a single tab through the Penpot plugin. Enter the local server address in **Server URL**.
 
 The hosted editor can be used from a browser without running Penpot’s server on the Syntra machine. Self-hosting can run on a separate machine. Use an HTTPS endpoint for a remote Penpot instance. [Penpot configuration](https://help.penpot.dev/technical-guide/configuration/)
 

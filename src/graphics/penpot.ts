@@ -114,8 +114,11 @@ export function revisionFor(scene: Scene) {
     .digest("hex");
 }
 
-async function call<T>(body: string, sandbox: z.ZodType<T>): Promise<T> {
-  const { file: target, mcp, sessionId } = penpotConnection();
+async function call<T>(
+  body: string,
+  sandbox: z.ZodType<T>,
+  { file: target, mcp, sessionId } = penpotConnection(),
+): Promise<T> {
   const transport = new StreamableHTTPClientTransport(mcp, {
     fetch: (input, init) =>
       fetch(input, {
@@ -132,7 +135,7 @@ async function call<T>(body: string, sandbox: z.ZodType<T>): Promise<T> {
       await client.connect(transport);
     } catch {
       throw new Error(
-        "Could not connect to Penpot MCP. Check the endpoint and connected tab.",
+        "Could not reach Penpot. Check the Server URL copied from MCP Server.",
       );
     }
     const code =
@@ -144,7 +147,10 @@ async function call<T>(body: string, sandbox: z.ZodType<T>): Promise<T> {
     let result;
     try {
       result = await client.callTool(
-        { name: "execute_code", arguments: { sessionId, code } },
+        {
+          name: "execute_code",
+          arguments: sessionId ? { sessionId, code } : { code },
+        },
         undefined,
         { timeout: 25_000 },
       );
@@ -155,7 +161,11 @@ async function call<T>(body: string, sandbox: z.ZodType<T>): Promise<T> {
     }
     const content = Array.isArray(result.content) ? result.content : [];
     const text = content.find((item) => item.type === "text")?.text;
-    if (typeof text !== "string" || result.isError) {
+    if (
+      typeof text !== "string" ||
+      result.isError ||
+      text.startsWith("Tool execution failed:")
+    ) {
       // Do not reflect connection credentials or arbitrary upstream text in the UI.
       if (
         typeof text === "string" &&
@@ -165,17 +175,39 @@ async function call<T>(body: string, sandbox: z.ZodType<T>): Promise<T> {
           "Open the configured Penpot file and page in the connected tab.",
         );
       }
+      if (
+        typeof text === "string" &&
+        text.includes("Multiple Penpot sessions are connected")
+      ) {
+        throw new Error(
+          "More than one Penpot tab is connected. Choose MCP → Disconnect in the other tabs, then try again with just your design tab connected.",
+        );
+      }
       if (typeof text === "string" && text.includes("Design changed"))
         throw new Error("Design changed. Inspect before editing again.");
       throw new Error(
-        "Penpot rejected the operation. Check that the session is connected, then inspect the design before retrying.",
+        "In your Penpot file, choose MCP → Connect and keep the tab open. If you already connected it, bring the tab to the foreground and try again.",
       );
     }
-    return sandbox.parse(JSON.parse(text));
+    try {
+      return sandbox.parse(JSON.parse(text));
+    } catch {
+      throw new Error("Penpot returned an unexpected response.");
+    }
   } finally {
     await client.close().catch(() => {});
   }
 }
+export function checkPenpotConnection(
+  connection?: ReturnType<typeof penpotConnection>,
+) {
+  return call(
+    "return { page: page.name };",
+    z.object({ page: z.string() }),
+    connection,
+  );
+}
+
 export function readPenpotScene() {
   return call("return snapshot();", sceneSchema);
 }

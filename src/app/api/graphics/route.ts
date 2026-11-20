@@ -1,6 +1,7 @@
-import { readPenpotScene } from "../../../graphics/penpot";
+import { checkPenpotConnection, readPenpotScene } from "../../../graphics/penpot";
 import {
   graphicsWorkspace,
+  prepareGraphicsConnection,
   saveGraphicsConnection,
 } from "../../../graphics/connection";
 import { exportRobloxGui } from "../../../graphics/roblox";
@@ -84,7 +85,9 @@ export async function PUT(request: Request) {
       }
       body += decoder.decode(value, { stream: true });
     }
-    return json(saveGraphicsConnection(JSON.parse(body + decoder.decode())));
+    const candidate = prepareGraphicsConnection(JSON.parse(body + decoder.decode()));
+    const check = await checkPenpotConnection(candidate.connection);
+    return json({ ...saveGraphicsConnection(candidate), ...check });
   } catch (error) {
     // Validation messages must never echo the typed MCP URL or its token.
     return json(

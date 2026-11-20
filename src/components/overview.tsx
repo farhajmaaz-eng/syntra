@@ -76,116 +76,117 @@ export default function Overview({
   const notices = pending.length + reviews.length + failed.length;
   return (
     <div className="workspace-tiles">
-      <div className="overview-stats stats">
-        <div>
-          <span className="metric-label">
-            Tasks <ListTodo size={16} aria-hidden="true" />
-          </span>
-          <strong>
-            {done.length}
-            <small> / {tasks.length}</small>
-          </strong>
-          <p className="metric-detail">completed</p>
-        </div>
-        <div>
-          <span className="metric-label">
-            Workers <Layers3 size={16} aria-hidden="true" />
-          </span>
-          <strong>
-            {running.length}
-            <small> / {data.settings.concurrency || 3}</small>
-          </strong>
-          <p className="metric-detail">{queued.length} queued</p>
-        </div>
-        <div>
-          <span className="metric-label">
-            Attention <CircleAlert size={16} aria-hidden="true" />
-          </span>
-          <strong className={notices ? "warning-text" : ""}>{notices}</strong>
-          <p className="metric-detail">{failed.length} failed or blocked</p>
-        </div>
-        <div>
-          <span className="metric-label">
-            Codex usage <Cpu size={16} aria-hidden="true" />
-          </span>
-          <strong>
-            {(
-              (data.codexUsage?.inputTokens || 0) +
-              (data.codexUsage?.outputTokens || 0)
-            ).toLocaleString()}
-            <small> tokens</small>
-          </strong>
-          <p className="metric-detail">
-            {data.codexUsage?.calls || 0} turns · OpenAI billing
-          </p>
+      <div className="overview-command-grid">
+        <section className="panel request-pane">
+          <div className="window-heading">
+            <span>
+              <Terminal size={15} /> Ask your Lead
+            </span>
+            <span className="pane-meta">
+              {data.settings.paused
+                ? "paused"
+                : ready
+                  ? "ready"
+                  : "setup required"}
+            </span>
+          </div>
+          <form
+            className="lead-command"
+            onSubmit={async (e) => {
+              if (await send(e)) setPrompt("");
+            }}
+          >
+            <label htmlFor="lead-request">Request</label>
+            <textarea
+              id="lead-request"
+              name="content"
+              aria-label="Request to Lead"
+              required
+              maxLength={20000}
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Describe the change and how it should be verified."
+              rows={3}
+            />
+            <div className="request-actions">
+              <span>
+                {selectedGame
+                  ? data.games.find((g: any) => g.id === selectedGame)?.name
+                  : data.games.length
+                    ? data.games[0].name
+                    : "Syntra Sandbox (auto-created on send)"}
+              </span>
+              <Button type="submit" disabled={busy || !prompt.trim()}>
+                Queue request <ArrowRight size={14} />
+              </Button>
+            </div>
+          </form>
+          <div className="quick-prompts" aria-label="Example requests">
+            {[
+              "Build an obby checkpoint system",
+              "Design a cozy village",
+              "Add a daily rewards UI",
+            ].map((s) => (
+              <button
+                type="button"
+                key={s}
+                onClick={() => {
+                  setPrompt(s);
+                  document.getElementById("lead-request")?.focus();
+                }}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </section>
+        <div className="overview-stats stats">
+          <div>
+            <span className="metric-label">
+              Tasks <ListTodo size={16} aria-hidden="true" />
+            </span>
+            <strong>
+              {done.length}
+              <small> / {tasks.length}</small>
+            </strong>
+            <p className="metric-detail">completed</p>
+          </div>
+          <div>
+            <span className="metric-label">
+              Workers <Layers3 size={16} aria-hidden="true" />
+            </span>
+            <strong>
+              {running.length}
+              <small> / {data.settings.concurrency || 3}</small>
+            </strong>
+            <p className="metric-detail">{queued.length} queued</p>
+          </div>
+          <div>
+            <span className="metric-label">
+              Attention <CircleAlert size={16} aria-hidden="true" />
+            </span>
+            <strong className={notices ? "warning-text" : ""}>{notices}</strong>
+            <p className="metric-detail">{failed.length} failed or blocked</p>
+          </div>
+          <div>
+            <span className="metric-label">
+              Codex usage <Cpu size={16} aria-hidden="true" />
+            </span>
+            <strong>
+              {(
+                (data.codexUsage?.inputTokens || 0) +
+                (data.codexUsage?.outputTokens || 0)
+              ).toLocaleString()}
+              <small> tokens</small>
+            </strong>
+            <p className="metric-detail">
+              {data.codexUsage?.calls || 0} turns · OpenAI billing
+            </p>
+          </div>
         </div>
       </div>
       <div className="desktop-columns">
         <div className="desktop-primary">
-          <section className="panel request-pane">
-            <div className="window-heading">
-              <span>
-                <Terminal size={15} /> Ask your Lead
-              </span>
-              <span className="pane-meta">
-                {data.settings.paused
-                  ? "paused"
-                  : ready
-                    ? "ready"
-                    : "setup required"}
-              </span>
-            </div>
-            <form
-              className="lead-command"
-              onSubmit={async (e) => {
-                if (await send(e)) setPrompt("");
-              }}
-            >
-              <label htmlFor="lead-request">Request</label>
-              <textarea
-                id="lead-request"
-                name="content"
-                aria-label="Request to Lead"
-                required
-                maxLength={20000}
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Describe the change and how it should be verified."
-                rows={3}
-              />
-              <div className="request-actions">
-                <span>
-                  {selectedGame
-                    ? data.games.find((g: any) => g.id === selectedGame)?.name
-                    : data.games.length
-                      ? data.games[0].name
-                      : "Syntra Sandbox (auto-created on send)"}
-                </span>
-                <Button type="submit" disabled={busy || !prompt.trim()}>
-                  Queue request <ArrowRight size={14} />
-                </Button>
-              </div>
-            </form>
-            <div className="quick-prompts">
-              <span>Examples:</span>
-              {[
-                "Build an obby checkpoint system",
-                "Design a cozy village",
-                "Add a daily rewards UI",
-              ].map((s) => (
-                <button
-                  type="button"
-                  key={s}
-                  onClick={() => {
-                    setPrompt(s);
-                    document.getElementById("lead-request")?.focus();
-                  }}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </section>
           <HumanAttention data={data} act={act} busy={busy} />
           {!ready && (
             <section className="panel setup-panel">
@@ -229,7 +230,7 @@ export default function Overview({
             <section className="panel attention-pane">
               <div className="window-heading">
                 <span>
-                  <ShieldCheck size={14} /> review &amp; recovery
+                  <ShieldCheck size={14} /> Review and recovery
                 </span>
                 <span className="pane-meta">{notices} items</span>
               </div>
@@ -319,8 +320,7 @@ export default function Overview({
                   <div>
                     <h3>Queue is empty</h3>
                     <p>
-                      Requests are planned by Lead, assigned to specialists,
-                      then checked by Tester.
+                      Send a request to Lead to start work. Tasks appear here as Lead creates them.
                     </p>
                   </div>
                 </div>

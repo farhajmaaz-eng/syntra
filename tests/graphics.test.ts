@@ -143,13 +143,18 @@ const penpot = {
   history: { undoBlockBegin: vi.fn(() => Symbol()), undoBlockFinish: vi.fn() },
 };
 
+let multiplePenpotTabs = false;
 const server = createServer(async (req, res) => {
   const mcp = new McpServer({ name: "penpot-fixture", version: "1.0.0" });
   mcp.registerTool(
     "execute_code",
-    { inputSchema: { code: z.string(), sessionId: z.string() } },
+    { inputSchema: { code: z.string(), sessionId: z.string().optional() } },
     ({ code, sessionId }) => {
-      if (sessionId !== "fixture-session")
+      if (!sessionId && multiplePenpotTabs)
+        return {
+          content: [{ type: "text", text: "Tool execution failed: Error: Multiple Penpot sessions are connected." }],
+        };
+      if (sessionId !== undefined && sessionId !== "fixture-session")
         return {
           isError: true,
           content: [{ type: "text", text: "Session mismatch" }],
@@ -265,27 +270,45 @@ it("pins Frame to a Penpot page, applies an undoable styled edit, and exports ed
   const settings = {
     fileUrl: `https://design.penpot.app/#/workspace?file-id=${fileId}&page-id=${pageId}`,
     mcpUrl: `http://127.0.0.1:${address.port}/mcp?userToken=fixture-private-key`,
-    sessionId: "fixture-session",
   };
   const initial = new Request(path, {
     method: "PUT",
     body: JSON.stringify(settings),
   });
   expect((await PUT(initial)).status).toBe(403);
-  const saved = await PUT(
-    new Request(path, {
+  const connect = (candidate: typeof settings & { sessionId?: string }) =>
+    PUT(new Request(path, {
       method: "PUT",
-      body: JSON.stringify(settings),
+      body: JSON.stringify(candidate),
       headers: {
         Host: "localhost:3000",
         Origin: "http://localhost:3000",
         "Sec-Fetch-Site": "same-origin",
         "Content-Type": "application/json",
       },
-    }),
-  );
+    }));
+  const saved = await connect(settings);
   expect(saved.status).toBe(200);
-  expect(await saved.text()).not.toContain("fixture-private-key");
+  const savedBody = await saved.text();
+  expect(savedBody).not.toContain("fixture-private-key");
+  expect(JSON.parse(savedBody).page).toBe(penpot.currentPage.name);
+
+  multiplePenpotTabs = true;
+  const ambiguous = await connect({ ...settings, mcpUrl: "" });
+  expect(ambiguous.status).toBe(400);
+  expect((await ambiguous.json()).error).toContain("MCP → Disconnect");
+
+  multiplePenpotTabs = false;
+  const reconnected = await connect({ ...settings, mcpUrl: "" });
+  expect(reconnected.status).toBe(200);
+
+  multiplePenpotTabs = true;
+
+  const explicit = await connect({ ...settings, mcpUrl: "", sessionId: "fixture-session" });
+  expect(explicit.status).toBe(200);
+  const wrongSession = await connect({ ...settings, sessionId: "wrong-session" });
+  expect(wrongSession.status).toBe(400);
+  // Export below must still use the previously verified session.
   expect(await (await GET(new Request(path))).text()).not.toContain(
     "fixture-private-key",
   );

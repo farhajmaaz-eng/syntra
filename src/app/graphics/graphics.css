@@ -31,7 +31,7 @@
 }
 .graphics-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr));
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   gap: 14px;
 }
 .graphics-card {
@@ -79,6 +79,24 @@
 }
 .graphics-connection {
   margin-block: 10px;
+  gap: 12px;
+}
+.graphics-connect-card {
+  grid-row: span 2;
+}
+.graphics-connection-note {
+  padding: 9px 12px;
+  background: var(--accent-wash);
+  border-left: 2px solid var(--accent);
+  font-size: 12px;
+}
+@media (max-width: 720px) {
+  .graphics-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .graphics-connect-card {
+    grid-row: auto;
+  }
 }
 .graphics-connection input {
   width: 100%;

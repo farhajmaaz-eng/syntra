@@ -76,7 +76,7 @@ export const Viewport3D: React.FC = () => {
 
     const scene = new THREE.Scene();
     const surface = getComputedStyle(el).getPropertyValue('--app-bg').trim();
-    scene.background = new THREE.Color(surface || '#101012');
+    scene.background = new THREE.Color(surface || '#000000');
 
     const camera = new THREE.PerspectiveCamera(
       50,
