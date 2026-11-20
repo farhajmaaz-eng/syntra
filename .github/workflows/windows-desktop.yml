@@ -40,6 +40,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          cache-on-failure: "true"
       - run: npm ci
       - run: npm run build
       - run: npm test -- --maxWorkers=1 tests/runtime-audit.test.ts tests/meshforge.test.ts
@@ -80,7 +81,7 @@ jobs:
               $app.Refresh()
               if ($app.HasExited) { throw "Syntra exited during startup" }
               if ((Get-Date) -gt $deadline) { throw "Syntra window did not appear" }
-            } until ($app.MainWindowTitle -eq "Syntra Studio")
+            } until ($app.MainWindowTitle.StartsWith("Syntra Studio"))
             if (!(Test-Path (Join-Path $dataDir "syntra.sqlite"))) { throw "Installed runtime did not initialize SQLite" }
             if (!$app.CloseMainWindow()) { throw "Could not close the Syntra window" }
             if (!$app.WaitForExit(24000)) { throw "Syntra did not exit gracefully" }

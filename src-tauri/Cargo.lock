@@ -3622,6 +3622,7 @@ dependencies = [
 name = "syntra-desktop"
 version = "1.0.0"
 dependencies = [
+ "dunce",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

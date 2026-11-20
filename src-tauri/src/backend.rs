@@ -74,6 +74,10 @@ impl Backend {
         data: &Path,
         on_notice: impl Fn(&str) + Send + 'static,
     ) -> io::Result<Self> {
+        // Tauri can return extended-length Windows paths. The Node CLI
+        // expects ordinary DOS paths for entry points and its working directory.
+        let runtime = dunce::simplified(runtime);
+        let data = dunce::simplified(data);
         let log = OpenOptions::new()
             .create(true)
             .append(true)
@@ -82,7 +86,7 @@ impl Backend {
         let job = Job::new()?;
         let app = runtime.join("app");
         let mut child = Command::new(runtime.join("node.exe"))
-            .arg(app.join("desktop-server.cjs"))
+            .arg("desktop-server.cjs")
             .current_dir(&app)
             .env("SYNTRA_DATA_DIR", data)
             .env("CODEX_PROJECT_ROOT", data.join("workspace"))
