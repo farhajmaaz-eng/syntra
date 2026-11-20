@@ -387,6 +387,7 @@ class CodexManager {
     child.stdout.on("data", (chunk: string) => { if (this.child === child) this.onData(chunk); });
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk: string) => {
+      if (this.child !== child) return;
       this.stderr = (this.stderr + chunk).slice(-8000);
       for (const line of chunk.split("\n")) {
         const text = line.trim();
@@ -787,9 +788,10 @@ class CodexManager {
     if (method === "account/login/completed") {
       this.login = null;
       if (params.success) {
-        void this.readAccount().catch((error) =>
-          event(redact(error), "Codex", "error"),
-        );
+        const child = this.child;
+        void this.readAccount().catch((error) => {
+          if (this.child === child) event(redact(error), "Codex", "error");
+        });
       } else {
         this.error = params.error || "Codex sign-in failed";
         event(this.error, "Codex", "error");
@@ -986,7 +988,9 @@ class CodexManager {
   }
 
   private async readAccount() {
+    const child = this.child;
     const result = await this.request("account/read", {}, 20000);
+    if (this.child !== child) return result;
     this.account = result?.account || null;
     this.requiresAuth = Boolean(result?.requiresOpenaiAuth);
     set("codexAccount", this.account);
