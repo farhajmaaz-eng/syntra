@@ -17,6 +17,11 @@ export class MeshProjectError extends Error {
 }
 
 let database: Database.Database | undefined;
+export function closeMeshStorage() {
+  database?.close();
+  database = undefined;
+}
+
 function storage() {
   if (database) return database;
   const directory = workspaceDataDirectory();

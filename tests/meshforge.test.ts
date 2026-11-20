@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Euler, Quaternion, Vector3 } from "three";
 import { GET, POST, PUT } from "../src/app/api/meshforge/[...action]/route";
+import { closeMeshStorage } from "../src/meshforge/store";
 import { wasmKernel } from "../src/meshforge/client/geometry/wasmKernel";
 import { exportSceneToFBX, exportSceneToGLB, exportSceneToOBJ, parseOBJToNode } from "../src/meshforge/shared/exporters";
 import { buildPrimitiveSoup, createDefaultSceneDocument } from "../src/meshforge/shared/sceneOps";
@@ -12,7 +13,10 @@ const dataDir = mkdtempSync(join(tmpdir(), "syntra-meshforge-test-"));
 const mcpKey = "meshforge-test-local-key";
 process.env.SYNTRA_DATA_DIR = dataDir;
 process.env.SYNTRA_MESHFORGE_MCP_KEY = mcpKey;
-afterAll(() => rmSync(dataDir, { recursive: true, force: true }));
+afterAll(() => {
+  closeMeshStorage();
+  rmSync(dataDir, { recursive: true, force: true });
+});
 
 const origin = "http://localhost:3000";
 const editor = { Origin: origin, "Sec-Fetch-Site": "same-origin" };
