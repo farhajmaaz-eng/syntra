@@ -1163,7 +1163,7 @@ export async function tick() {
     .all(Date.now()) as any[];
   for (const t of queued) {
     if (
-      active.size >= Math.min(3, Math.max(1, get<number>("concurrency") || 3))
+      active.size >= Math.min(Object.keys(roles).length, Math.max(1, get<number>("concurrency") || 3))
     )
       break;
     if (

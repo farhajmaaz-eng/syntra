@@ -851,12 +851,12 @@ function SettingsForm({
         </h3>
         <div className="form-grid">
           <label>
-            Concurrent agents (1–3)
+            Concurrent agents (1–{Object.keys(roles).length})
             <input
               name="concurrency"
               type="number"
               min="1"
-              max="3"
+              max={Object.keys(roles).length}
               defaultValue={s.concurrency || 3}
             />
           </label>

@@ -67,6 +67,24 @@ Syntra's built-in Codex and Scenic agents can use Illustrate directly. For an ex
 
 Workspace data and Codex credentials are stored locally in `.data/` by default. Set `SYNTRA_DATA_DIR` to move that directory. Upgrading installations can still read the previous directory setting and database filename. New workspaces use `syntra.sqlite`. Stop Syntra before backing it up, and keep it out of version control. Use the dashboard on a trusted machine. Codex billing is handled by OpenAI, and Syntra displays token usage.
 
+## Windows desktop
+
+Get the **Syntra-Desktop-Windows-x64** installer artifact from the latest successful [Windows desktop workflow](https://github.com/farhajmaaz-eng/syntra/actions/workflows/windows-desktop.yml). Extract the ZIP, run the setup EXE, and open **Syntra Desktop** from the Start menu. Setup installs Microsoft Edge WebView2 if it is missing. Syntra includes Node, SQLite, the Codex app-server, and the Illustrate WASM editor.
+
+Desktop files live under `%LOCALAPPDATA%\dev.syntra.desktop`. **File → Open data folder** opens that directory. In **Codex → Local project & permissions**, **Browse folders** selects a Windows project folder. Sign in to Codex from Syntra. For Studio tools, enable MCP in the Windows Roblox Studio installation and connect it from **Games**. In **Settings → Runtime**, choose up to eight concurrent agents.
+
+The Windows workflow builds the production Next.js frontend, stages the desktop runtime, tests it, and packages the Tauri 2 installer. To build it on a Windows x64 development machine with the Microsoft C++ build tools, Node 22, Rust, and WebView2 installed, run:
+
+```sh
+npm ci
+npm run build
+node desktop/make-resources.mjs
+node desktop/smoke.mjs
+npx --yes @tauri-apps/cli@2.12.6 build --bundles nsis --target x86_64-pc-windows-msvc
+```
+
+The staging script takes a fresh output directory. The installer is created in `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`.
+
 ## Development checks
 
 ```sh

@@ -1,4 +1,6 @@
 "use client";
+
+import { nativeFolderPicker } from "@/lib/native-desktop";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
@@ -86,6 +88,9 @@ export default function CodexWorkspace({
     status.sandbox || "workspace-write",
   );
   const [title, setTitle] = useState("");
+  const [picker, setPicker] = useState<ReturnType<typeof nativeFolderPicker>>();
+  const [pickerError, setPickerError] = useState("");
+  useEffect(() => setPicker(() => nativeFolderPicker()), []);
   const [root, setRoot] = useState(status.projectRoot || "");
   const [cwd, setCwd] = useState(status.projectRoot || "");
   const [model, setModel] = useState(status.defaultModel || "");
@@ -438,6 +443,23 @@ export default function CodexWorkspace({
                 required
               />
             </label>
+            {picker && (
+              <Button type="button" variant="outline" size="sm" onClick={async () => {
+                setPickerError("");
+                try {
+                  const folder = await picker();
+                  if (folder) {
+                    setRoot(folder);
+                    setCwd(folder);
+                  }
+                } catch {
+                  setPickerError("Could not open the Windows folder picker.");
+                }
+              }}>
+                Browse folders
+              </Button>
+            )}
+            {pickerError && <p role="alert" className="failure-text">{pickerError}</p>}
             <label>
               Sandbox
               <CustomSelect

@@ -1,0 +1,87 @@
+name: Windows desktop
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "src-tauri/**"
+      - "desktop/**"
+      - "src/**"
+      - "worker/**"
+      - "library/**"
+      - "public/**"
+      - "tests/**"
+      - "package*.json"
+      - "next.config.ts"
+      - ".github/workflows/windows-desktop.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 50
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - run: npm run build
+      - run: npm test -- --maxWorkers=1 tests/runtime-audit.test.ts tests/meshforge.test.ts
+      - name: Stage the production server and Windows Node runtime
+        run: node desktop/make-resources.mjs
+      - name: Include the bundled Node license
+        shell: pwsh
+        run: |
+          $version = node --version
+          Invoke-WebRequest "https://nodejs.org/dist/$version/LICENSE" -OutFile src-tauri/runtime/NODE-LICENSE.txt
+      - name: Test production frontend, backend, Codex, SQLite and WASM
+        run: node desktop/smoke.mjs src-tauri/runtime/app
+      - name: Build the Windows installer
+        run: npx --yes @tauri-apps/cli@2.12.6 build --bundles nsis --target x86_64-pc-windows-msvc --ci
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Syntra-Desktop-Windows-x64
+          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
+      - name: Install and launch the desktop application
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          $installPath = Join-Path $env:RUNNER_TEMP "SyntraDesktop"
+          $setup = Start-Process $installer.FullName -ArgumentList "/S", "/D=$installPath" -PassThru -Wait
+          if ($setup.ExitCode -ne 0) { throw "Installer exited with $($setup.ExitCode)" }
+          $app = Start-Process (Join-Path $installPath "syntra-desktop.exe") -PassThru
+          $dataDir = Join-Path $env:LOCALAPPDATA "dev.syntra.desktop"
+          try {
+            $deadline = (Get-Date).AddSeconds(80)
+            do {
+              Start-Sleep -Seconds 1
+              $app.Refresh()
+              if ($app.HasExited) { throw "Syntra exited during startup" }
+              if ((Get-Date) -gt $deadline) { throw "Syntra window did not appear" }
+            } until ($app.MainWindowTitle -eq "Syntra Studio")
+            if (!(Test-Path (Join-Path $dataDir "syntra.sqlite"))) { throw "Installed runtime did not initialize SQLite" }
+            if (!$app.CloseMainWindow()) { throw "Could not close the Syntra window" }
+            if (!$app.WaitForExit(24000)) { throw "Syntra did not exit gracefully" }
+            if (Test-Path (Join-Path $dataDir "worker.pid")) { throw "Syntra did not release the worker lock" }
+          } finally {
+            if (!$app.HasExited) { $app.Kill() }
+            $log = Join-Path $dataDir "desktop.log"
+            if (Test-Path $log) { Get-Content $log -Tail 60 }
+          }

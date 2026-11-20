@@ -112,7 +112,7 @@ export async function action(path: string, b: any) {
     const a = z
       .object({
         cap: z.number().min(0).max(1000).optional(),
-        concurrency: z.number().int().min(1).max(3).optional(),
+        concurrency: z.number().int().min(1).max(Object.keys(roles).length).optional(),
         taskTimeoutMs: z.number().int().min(1000).max(3600000).optional(),
         paused: z.boolean(),
         approvalRequired: z.boolean(),
@@ -377,6 +377,7 @@ type EmbeddedWorkerState = {
 export function ensureEmbeddedWorkerStarted() {
   const g = globalThis as typeof globalThis & {
     __syntraEmbeddedWorker?: EmbeddedWorkerState;
+    __syntraDesktopShutdown?: () => Promise<void>;
   };
   if (!g.__syntraEmbeddedWorker) {
     g.__syntraEmbeddedWorker = { started: false, ticking: false };
@@ -387,8 +388,40 @@ export function ensureEmbeddedWorkerStarted() {
   set("workerPort", Number(process.env.WORKER_PORT || 4318));
   recover();
   void studio.connect();
+  let desktopNotifications: (() => void) | undefined;
+  if (process.env.SYNTRA_DESKTOP === "1") {
+    const notices = [
+      { kind: "attention", pending: db.prepare(
+        "SELECT id FROM approvals WHERE status='pending' UNION SELECT id FROM attention_requests WHERE status='pending'",
+      ) },
+      { kind: "review", pending: db.prepare("SELECT id FROM runs WHERE status='review'") },
+    ].map(({ kind, pending }) => {
+      const ids = () => new Set((pending.all() as { id: string }[]).map((row) => row.id));
+      return { kind, ids, known: ids() };
+    });
+    desktopNotifications = () => {
+      for (const notice of notices) {
+        const current = notice.ids();
+        if ([...current].some((id) => !notice.known.has(id)))
+          process.stdout.write(`SYNTRA_NOTICE ${notice.kind}\n`);
+        notice.known = current;
+      }
+    };
+    g.__syntraDesktopShutdown = async () => {
+      clearInterval(state.timer);
+      abortAll();
+      const deadline = Date.now() + 12_000;
+      while ((active.size || state.ticking) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      codex.shutdown();
+      await studio.close();
+      db.close();
+    };
+  }
   state.timer = setInterval(() => {
     interruptStopped();
+    desktopNotifications?.();
     if (!studio.client && !connecting && !maintaining) {
       void studio.maintain().catch((e) => event(redact(e), "System", "error"));
     }

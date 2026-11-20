@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
+import { roles } from "../src/lib/roles";
 const dir = mkdtempSync(resolve(tmpdir(), "syntra-runtime-audit-"));
 process.env.SYNTRA_DATA_DIR = dir;
 process.env.CODEX_APP_SERVER_COMMAND = process.execPath;
@@ -99,6 +100,30 @@ it("runs up to three independent agents and never two tasks for the same agent",
   expect(store.task(ids[4]).status).toBe("queued");
 });
 
+it("starts all eight roles in distinct turns and cancels them independently", async () => {
+  store.set("concurrency", 8);
+  const ids = Object.keys(roles).map((role) => run(role));
+  const duplicate = run("Architect");
+  await runtime.tick();
+  await started(8);
+  const turns = store.db.prepare("SELECT task_id,thread_id FROM codex_sessions WHERE task_id IS NOT NULL");
+  const deadline = Date.now() + 5000;
+  while (turns.all().length < 8 && Date.now() < deadline)
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(new Set(turns.all().map((row: any) => row.thread_id)).size).toBe(8);
+  expect(store.task(duplicate).status).toBe("queued");
+  featureAction("tasks/control", { id: ids[0], action: "cancel" }, runtime.active);
+  runtime.interruptStopped();
+  while (runtime.active.has(ids[0]) && Date.now() < deadline)
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(runtime.active.size).toBe(7);
+  for (const id of ids.slice(1)) {
+    expect(store.task(id).status).toBe("running");
+    featureAction("tasks/control", { id, action: "cancel" }, runtime.active);
+  }
+  runtime.interruptStopped();
+  await idle();
+});
 it("enforces configurable lower concurrency", async () => {
   store.set("concurrency", 1);
   run("Architect");
