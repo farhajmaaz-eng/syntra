@@ -76,6 +76,23 @@ for (const [name, r] of Object.entries(roles))
       codexAgentModel,
     r.brief,
   );
+// Upgrade shipped prompts by exact match and keep workspace customizations.
+export function migrateLeadPrompt() {
+  const previous = roles.Lead.brief.replace(
+    "Answer directly when the request calls for research, explanation, or a proposal. For implementation, delegate",
+    "Delegate",
+  );
+  const mandatory = previous.replace(
+    "Delegate the appropriate tasks to Architect, Builder, Frame, Scenic, Balance, Tester and Codex as needed.",
+    "Set up the seven subagents through delegate: Architect, Builder, Frame, Scenic, Balance, Tester and Codex.",
+  );
+  const beforeResearch = mandatory.replace(/ When market context matters,.*? relevant agents\./, "");
+  const legacy = "Own the request. Inspect the active game, clarify requirements in your deliverable, and delegate concrete, dependency-ordered tasks using delegate. Do not implement changes yourself. Delegate a final Tester task depending on every implementation task. Each task needs measurable acceptance criteria. Summarize the plan and risks.";
+  db.prepare("UPDATE agents SET prompt=? WHERE name='Lead' AND prompt IN (?,?,?,?)")
+    .run(roles.Lead.brief, previous, mandatory, beforeResearch, legacy);
+}
+migrateLeadPrompt();
+
 // One-time Codex-only migration: every agent now runs through the app-server.
 // Prompts and non-model settings are preserved.
 if (!get("codexOnlyMigrationV1")) {

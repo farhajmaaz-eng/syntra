@@ -47,6 +47,13 @@ type ActiveTurn = {
   resolve: (value: any) => void;
   reject: (error: unknown) => void;
   settled: boolean;
+  prompt: string;
+  submitted?: boolean;
+  earlyEvents: Array<{ method: string; params: any }>;
+  stopRequested?: boolean;
+  interrupting?: Promise<void>;
+  finished: Promise<void>;
+  notifyFinished: () => void;
   lastPersisted: number;
   onText?: (text: string) => void;
   abort?: () => void;
@@ -291,6 +298,7 @@ class CodexManager {
   private activeByThread = new Map<string, ActiveTurn>();
   private activeByTurn = new Map<string, ActiveTurn>();
   private loaded = new Set<string>();
+  private unresolved = new Set<string>();
   private approvals = new Map<string, PendingApproval>();
   private buffer = "";
   private stderr = "";
@@ -302,7 +310,7 @@ class CodexManager {
   private shuttingDown = false;
 
   busy() {
-    return this.activeByTurn.size > 0;
+    return this.activeByThread.size > 0;
   }
 
   status() {
@@ -346,8 +354,8 @@ class CodexManager {
   }
 
   async ensureStarted() {
-    if (this.child && !this.child.killed) return;
     if (this.starting) return this.starting;
+    if (this.child && !this.child.killed) return;
     if (!this.available())
       throw new OperationError(
         "OpenAI Codex is not installed. Run npm ci, then reload the worker. The @openai/codex package supplies the app-server binary.",
@@ -366,6 +374,8 @@ class CodexManager {
     this.stderr = "";
     this.buffer = "";
     this.loaded.clear();
+    this.unresolved.clear();
+    this.shuttingDown = false;
     const child = spawn(b.command, b.args, {
       cwd: validateCodexCwd(get<string>("codexProjectRoot")),
       env: childEnv() as NodeJS.ProcessEnv,
@@ -374,7 +384,7 @@ class CodexManager {
     }) as ChildProcessWithoutNullStreams;
     this.child = child;
     child.stdout.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => this.onData(chunk));
+    child.stdout.on("data", (chunk: string) => { if (this.child === child) this.onData(chunk); });
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk: string) => {
       this.stderr = (this.stderr + chunk).slice(-8000);
@@ -385,11 +395,14 @@ class CodexManager {
           event(`Codex app-server: ${redact(text).slice(0, 500)}`, "Codex", "error");
       }
     });
+    child.stdin.on("error", () => { /* The exit event settles the RPCs for this child. */ });
     child.on("error", (error) => {
+      if (this.child !== child) return;
       this.error = `Codex app-server failed to start: ${redact(error)}`;
       this.failAll(new OperationError(this.error));
     });
     child.on("exit", (code, signal) => {
+      if (this.child !== child) return;
       const expected = this.shuttingDown;
       this.child = null;
       this.loaded.clear();
@@ -410,8 +423,9 @@ class CodexManager {
         },
         25000,
       );
+      this.send({ method: "initialized" });
       await this.readAccount();
-      await this.refreshModels().catch((error) => {
+      await this.readModels().catch((error) => {
         event(`Codex model catalog unavailable: ${redact(error)}`, "Codex", "warning");
       });
       event("OpenAI Codex app-server connected", "Codex");
@@ -430,14 +444,15 @@ class CodexManager {
       pending.reject(error);
       this.pending.delete(id);
     }
-    for (const active of this.activeByTurn.values())
-      this.settleTurn(active, "failed", redact(error));
+    for (const active of this.activeByThread.values())
+      this.settleTurn(active, "failed", redact(error), null, true);
     for (const [rpcId, approval] of this.approvals) {
       clearTimeout(approval.timer);
       db.prepare(
         "UPDATE approvals SET status='cancelled',note=?,decided_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'",
       ).run("Codex app-server disconnected before a decision", approval.approvalId);
       this.approvals.delete(rpcId);
+      approval.resolve(null);
     }
   }
 
@@ -482,8 +497,9 @@ class CodexManager {
       return;
     }
     if (message.method && message.id !== undefined) {
-      void this.serverRequest(message).catch((error) => {
-        this.send({
+      const owner = this.child;
+      void this.serverRequest(message, owner).catch((error) => {
+        if (this.child === owner) this.send({
           id: message.id,
           error: { code: -32603, message: redact(error) },
         });
@@ -515,13 +531,47 @@ class CodexManager {
     });
   }
 
-  private async serverRequest(message: any) {
+  private activeTurn(threadId: string | undefined, turnId: string | undefined) {
+    if (turnId) {
+      const active = this.activeByTurn.get(turnId);
+      return active && (!threadId || active.threadId === threadId) ? active : undefined;
+    }
+    return threadId ? this.activeByThread.get(threadId) : undefined;
+  }
+
+  private bindTurn(active: ActiveTurn, turn: { id: string }) {
+    if (active.turnId) return active.turnId === turn.id;
+    if (active.settled || this.activeByTurn.has(turn.id) ||
+        db.prepare("SELECT 1 FROM codex_turns WHERE id=?").get(turn.id)) return false;
+    db.prepare("INSERT INTO codex_turns(id,session_id,task_id,prompt) VALUES (?,?,?,?)")
+      .run(turn.id, active.sessionId, active.taskId || null, active.prompt);
+    active.turnId = turn.id;
+    this.activeByTurn.set(turn.id, active);
+    const early = active.earlyEvents.splice(0);
+    for (const { method, params } of early) {
+      if ((params.turnId || params.turn?.id) === turn.id) this.notification(method, params);
+    }
+    if (active.stopRequested && !active.settled) void this.interrupt(active.threadId, turn.id);
+    return true;
+  }
+
+  private syncApprovalState(taskId: string) {
+    db.prepare(`
+      UPDATE tasks SET status=CASE WHEN EXISTS (
+        SELECT 1 FROM approvals WHERE task_id=tasks.id AND status='pending'
+      ) THEN 'approval' ELSE 'running' END, updated=CURRENT_TIMESTAMP
+      WHERE id=? AND status IN ('running','approval') AND stop_requested IS NULL
+    `).run(taskId);
+  }
+
+  private async serverRequest(message: any, owner: ChildProcessWithoutNullStreams | null) {
+    const reply = (value: unknown) => this.child === owner && this.send(value);
     const method = message.method;
     const params = message.params || {};
     if (method === "item/tool/call") {
-      const active = this.activeByThread.get(params.threadId || "");
-      if (!active?.toolHandler) {
-        this.send({
+      const active = this.activeTurn(params.threadId, params.turnId);
+      if (!active?.toolHandler || active.stopRequested) {
+        reply({
           id: message.id,
           result: {
             contentItems: [
@@ -543,7 +593,7 @@ class CodexManager {
           threadId: params.threadId,
           turnId: params.turnId || active.turnId,
         });
-        this.send({
+        reply({
           id: message.id,
           result: {
             contentItems: [
@@ -559,7 +609,7 @@ class CodexManager {
           },
         });
       } catch (error) {
-        this.send({
+        reply({
           id: message.id,
           result: {
             contentItems: [
@@ -579,7 +629,7 @@ class CodexManager {
         "item/tool/requestUserInput",
       ].includes(method)
     ) {
-      this.send({
+      reply({
         id: message.id,
         error: {
           code: -32601,
@@ -590,17 +640,13 @@ class CodexManager {
       return;
     }
     const threadId = params.threadId || "";
-    const active = this.activeByThread.get(threadId);
-    const turnId = params.turnId || active?.turnId || "";
-    const sessionRow =
-      (active && this.session(active.sessionId)) ||
-      (db
-        .prepare("SELECT * FROM codex_sessions WHERE thread_id=?")
-        .get(threadId) as any);
-    if (!sessionRow) {
-      this.send({
+    const active = this.activeTurn(threadId, params.turnId);
+    const turnId = active?.turnId;
+    const sessionRow = active && this.session(active.sessionId);
+    if (!active || !turnId || active.stopRequested || !sessionRow) {
+      reply({
         id: message.id,
-        error: { code: -32602, message: "Unknown Codex thread" },
+        error: { code: -32602, message: "No active Codex turn owns this approval" },
       });
       return;
     }
@@ -638,7 +684,8 @@ class CodexManager {
       sessionRow.id,
       String(message.id),
     );
-    recordEvent(sessionRow.id, turnId || null, method, params);
+    if (active.taskId) this.syncApprovalState(active.taskId);
+    recordEvent(sessionRow.id, turnId, method, params);
     event(
       `Codex ${kind === "question" ? "question" : "approval"} required`,
       "Codex",
@@ -649,7 +696,8 @@ class CodexManager {
         db.prepare(
           "UPDATE approvals SET status='cancelled',note=?,decided_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'",
         ).run("No decision was recorded before the approval expired", approvalId);
-        this.send({
+        if (active.taskId) this.syncApprovalState(active.taskId);
+        reply({
           id: message.id,
           error: { code: -32000, message: "Approval expired without a decision" },
         });
@@ -674,7 +722,7 @@ class CodexManager {
         "Auto-approved by workspace policy",
       );
     response.then((decision) => {
-      if (decision) this.send({ id: message.id, result: decision });
+      if (decision && !active.settled) reply({ id: message.id, result: decision });
     });
   }
 
@@ -684,8 +732,11 @@ class CodexManager {
       .get(approvalId);
     if (!row || row.status !== "pending") return false;
     const pending = this.approvals.get(String(row.rpc_request_id));
+    if (!pending || pending.approvalId !== approvalId) return false;
+    const active = this.activeTurn(pending.threadId, pending.turnId);
+    if (!active || active.stopRequested) return false;
     let decision: any;
-    if (pending?.kind === "question") {
+    if (pending.kind === "question") {
       const answers: Record<string, any> = {};
       for (const question of pending.questions || [])
         answers[question.id] = {
@@ -708,11 +759,10 @@ class CodexManager {
     db.prepare(
       "UPDATE approvals SET status=?,note=?,reviewer='User',decided_at=CURRENT_TIMESTAMP WHERE id=?",
     ).run(approved ? "approved" : "rejected", note, approvalId);
-    if (pending) {
-      clearTimeout(pending.timer);
-      this.approvals.delete(String(pending.rpcId));
-      pending.resolve(decision);
-    }
+    clearTimeout(pending.timer);
+    this.approvals.delete(String(pending.rpcId));
+    if (active.taskId) this.syncApprovalState(active.taskId);
+    pending.resolve(decision);
     db.prepare(
       "INSERT INTO review_events(id,target_kind,target_id,verdict,note,reviewer) VALUES (?,?,?,?,?, 'User')",
     ).run(
@@ -761,15 +811,23 @@ class CodexManager {
       event(`Codex configuration warning: ${clip(params.summary, 500)}`, "Codex", "warning");
       return;
     }
-    const active =
-      (params.turnId && this.activeByTurn.get(params.turnId)) ||
-      (params.threadId && this.activeByThread.get(params.threadId)) ||
-      null;
+    const turnId = params.turnId || params.turn?.id;
+    if (method === "turn/started" && turnId && params.threadId) {
+      const starting = this.activeByThread.get(params.threadId);
+      if (starting?.submitted) this.bindTurn(starting, { id: turnId });
+    }
+    const active = this.activeTurn(params.threadId, turnId);
+    if (turnId && !active) {
+      const starting = this.activeByThread.get(params.threadId);
+      if (starting?.submitted && !starting.turnId && starting.earlyEvents.length < 100 &&
+          !db.prepare("SELECT 1 FROM codex_turns WHERE id=?").get(turnId)) {
+        starting.earlyEvents.push({ method, params });
+      }
+      return;
+    }
     if (!active && !params.threadId) return;
-    const sessionId =
-      active?.sessionId || this.sessionForThread(params.threadId)?.id;
+    const sessionId = active?.sessionId || this.sessionForThread(params.threadId)?.id;
     if (!sessionId) return;
-    const turnId = params.turnId || active?.turnId || null;
     const streaming = [
       "item/agentMessage/delta",
       "item/plan/delta",
@@ -778,16 +836,9 @@ class CodexManager {
       "turn/diff/updated",
     ];
     if (!streaming.includes(method))
-      recordEvent(sessionId, turnId, method, params);
+      recordEvent(sessionId, turnId || active?.turnId || null, method, params);
 
-    if (method === "thread/status/changed") {
-      const value = params.status?.type;
-      if (active) return;
-      db.prepare(
-        "UPDATE codex_sessions SET status=?,updated=CURRENT_TIMESTAMP WHERE id=?",
-      ).run(value === "active" ? "running" : value === "systemError" ? "error" : "idle", sessionId);
-      return;
-    }
+    if (method === "thread/status/changed") return;
     if (method === "item/agentMessage/delta" && active) {
       active.text += params.delta || "";
       this.persistStreaming(active);
@@ -830,16 +881,12 @@ class CodexManager {
     }
     if (method === "turn/completed" && active) {
       const value = params.turn || {};
-      this.settleTurn(
-        active,
-        value.status || "completed",
-        value.error?.message || active.error,
-        value,
-      );
+      this.settleTurn(active, value.status || "failed", value.error?.message || (value.status === "completed" ? "" : active.error), value);
       return;
     }
     if (method === "thread/closed" && active) {
-      this.settleTurn(active, "interrupted", "Codex thread closed");
+      this.loaded.delete(active.threadId);
+      this.settleTurn(active, "failed", "Codex thread closed before turn completion", null, true);
     }
   }
 
@@ -869,9 +916,12 @@ class CodexManager {
     status: string,
     error = "",
     raw: any = null,
+    uncertain = false,
   ) {
     if (active.settled) return;
     active.settled = true;
+    active.notifyFinished();
+    this.cancelApprovals(active.threadId, "Codex turn ended before a decision");
     if (raw && Array.isArray(raw.items) && !active.text) {
       const messages = raw.items
         .filter((item: any) => item.type === "agentMessage" && item.text)
@@ -895,7 +945,7 @@ class CodexManager {
       active.turnId,
     );
     const total = active.usage?.total;
-    if (total)
+    if (total && active.turnId)
       db.prepare(
         "INSERT OR REPLACE INTO usage(id,task_id,agent,model,input_tokens,output_tokens,cost,reserved,status,provider) VALUES (?,?,?,?,?,?,NULL,0,'unpriced','codex')",
       ).run(
@@ -908,7 +958,7 @@ class CodexManager {
       );
     db.prepare(
       "UPDATE codex_sessions SET status=?,updated=CURRENT_TIMESTAMP WHERE id=?",
-    ).run(normalized === "completed" ? "idle" : "error", active.sessionId);
+    ).run(normalized === "completed" || (normalized === "interrupted" && active.stopRequested) ? "idle" : "error", active.sessionId);
     this.activeByThread.delete(active.threadId);
     this.activeByTurn.delete(active.turnId);
     if (active.abort)
@@ -924,14 +974,12 @@ class CodexManager {
       const message =
         error ||
         `Codex turn ${normalized}`;
-      const nonRetry = /unauthor|usage limit|rate limit|context|not found|bad request|policy/i.test(
-        message,
-      );
+      const nonRetry = /unauthor|usage limit|quota|context|not found|bad request|policy/i.test(message);
       active.reject(
         new OperationError(
           `Codex ${normalized}: ${redact(message)}`,
-          !nonRetry && /overload|temporar|reconnect|timeout/i.test(message),
-          normalized === "interrupted",
+          normalized === "failed" && !uncertain && !nonRetry && /overload|temporar|reconnect|timeout|rate limit|429|503/i.test(message),
+          uncertain || (normalized === "interrupted" && !active.stopRequested),
         ),
       );
     }
@@ -952,6 +1000,10 @@ class CodexManager {
 
   async refreshModels() {
     await this.ensureStarted();
+    return this.readModels();
+  }
+
+  private async readModels() {
     const result = await this.request("model/list", { limit: 100 }, 25000);
     this.models = Array.isArray(result?.data)
       ? result.data.map((model: any) => ({
@@ -1051,6 +1103,7 @@ class CodexManager {
     dynamicTools?: CodexDynamicTool[];
     toolHandler?: (call: CodexToolCall) => Promise<any>;
   }) {
+    input.signal?.throwIfAborted();
     await this.ensureStarted();
     if (this.account === null && this.requiresAuth && !process.env.CODEX_API_KEY)
       throw new OperationError(
@@ -1065,8 +1118,20 @@ class CodexManager {
       throw new OperationError(
         "This Codex session already has an active turn. Interrupt it or wait for completion.",
       );
-    await this.resume(sessionRow);
+    input.signal?.throwIfAborted();
+    if (this.unresolved.has(sessionRow.thread_id)) {
+      const prior = await this.request("thread/read", { threadId: sessionRow.thread_id, includeTurns: true }, 5000);
+      const last = prior?.thread?.turns?.at(-1);
+      if (prior?.thread?.status?.type === "active" || last?.status === "inProgress" ||
+          !["idle", "notLoaded", "systemError"].includes(prior?.thread?.status?.type)) {
+        throw new OperationError("The preceding Codex turn is still unconfirmed. Wait for it to finish before retrying.");
+      }
+      this.unresolved.delete(sessionRow.thread_id);
+      if (this.activeByThread.has(sessionRow.thread_id)) throw new OperationError("This Codex session already has an active turn.");
+    }
     const cwd = validateCodexCwd(sessionRow.cwd);
+    let notifyFinished!: () => void;
+    const finished = new Promise<void>(resolve => { notifyFinished = resolve; });
     const active: ActiveTurn = {
       sessionId: sessionRow.id,
       threadId: sessionRow.thread_id,
@@ -1080,6 +1145,8 @@ class CodexManager {
       resolve: () => {},
       reject: () => {},
       settled: false,
+      prompt: input.prompt.slice(0, 120000),
+      finished, notifyFinished, earlyEvents: [],
       lastPersisted: 0,
       onText: input.onText,
       toolHandler: input.toolHandler,
@@ -1088,12 +1155,23 @@ class CodexManager {
       active.resolve = resolve;
       active.reject = reject;
     });
+    void done.catch(() => {});
     this.activeByThread.set(active.threadId, active);
+    if (input.signal) {
+      const abort = () => { void this.interrupt(active.threadId, active.turnId); };
+      input.signal.addEventListener("abort", abort, { once: true });
+      active.abort = () => input.signal!.removeEventListener("abort", abort);
+    }
     db.prepare(
       "UPDATE codex_sessions SET status='running',updated=CURRENT_TIMESTAMP WHERE id=?",
     ).run(active.sessionId);
     try {
-      const result = await this.request(
+      await this.resume(sessionRow);
+      if (active.settled) return done;
+      input.signal?.throwIfAborted();
+      if (active.stopRequested) throw new OperationError("Codex turn interrupted before submission");
+      active.submitted = true;
+      const start = this.request(
         "turn/start",
         {
           threadId: active.threadId,
@@ -1106,84 +1184,71 @@ class CodexManager {
         },
         30000,
       );
+      const result = await Promise.race([start, active.finished.then(() => undefined)]);
       const turnId = result?.turn?.id;
-      if (!turnId) throw new OperationError("Codex did not return a turn ID");
-      active.turnId = turnId;
-      this.activeByTurn.set(turnId, active);
-      db.prepare(
-        "INSERT INTO codex_turns(id,session_id,task_id,prompt) VALUES (?,?,?,?)",
-      ).run(
-        turnId,
-        active.sessionId,
-        active.taskId || null,
-        input.prompt.slice(0, 120000),
-      );
-      recordEvent(active.sessionId, turnId, "turn/started", result.turn);
+      if (!active.settled && (!turnId || !this.bindTurn(active, { id: turnId }))) {
+        throw new OperationError("Codex returned an unconfirmed turn ID", false, true);
+      }
     } catch (error) {
-      if (!active.settled) {
-        active.settled = true;
-        this.activeByThread.delete(active.threadId);
-        db.prepare(
-          "UPDATE codex_sessions SET status='idle',updated=CURRENT_TIMESTAMP WHERE id=?",
-        ).run(active.sessionId);
-        active.reject(error);
-      }
-      throw error;
-    }
-    if (input.signal) {
-      const abort = () =>
-        void this.interrupt(active.threadId, active.turnId).catch((error) =>
-          event(`Codex interrupt failed: ${redact(error)}`, "Codex", "error"),
-        );
-      if (input.signal.aborted) abort();
-      else {
-        input.signal.addEventListener("abort", abort, { once: true });
-        active.abort = () => input.signal!.removeEventListener("abort", abort);
-      }
+      if (active.settled || active.turnId) return done;
+      active.settled = true;
+      active.notifyFinished();
+      active.abort?.();
+      this.activeByThread.delete(active.threadId);
+      const uncertain = active.submitted === true;
+      if (uncertain) this.unresolved.add(active.threadId);
+      db.prepare("UPDATE codex_sessions SET status=?,updated=CURRENT_TIMESTAMP WHERE id=?")
+        .run(uncertain ? "error" : "idle", active.sessionId);
+      throw uncertain ? new OperationError(redact(error), false, true) : error;
     }
     return done;
   }
 
   async interruptSession(sessionId: string) {
-    const active = [...this.activeByTurn.values()].find(
-      (value) => value.sessionId === sessionId,
-    );
+    const active = [...this.activeByThread.values()].find(value => value.sessionId === sessionId);
     if (!active) return false;
     await this.interrupt(active.threadId, active.turnId);
     return true;
   }
 
   async interrupt(threadId: string, turnId?: string) {
-    if (!this.child) return;
     const active = this.activeByThread.get(threadId);
-    const target = turnId || active?.turnId;
-    if (!target) return;
-    this.cancelApprovals(threadId, "Turn interrupted before a decision");
-    await this.request("turn/interrupt", { threadId, turnId: target }, 15000);
-    if (active && !active.settled) {
-      await new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, 15000);
-        const check = setInterval(() => {
-          if (active.settled) {
-            clearInterval(check);
-            clearTimeout(timer);
-            resolve();
-          }
-        }, 100);
-      });
-      if (!active.settled)
-        this.settleTurn(active, "interrupted", "Interrupt was not acknowledged");
+    if (!active || active.settled || (turnId && active.turnId !== turnId)) return;
+    active.stopRequested = true;
+    if (!active.turnId) return;
+    active.interrupting ??= this.interruptActive(active);
+    return active.interrupting;
+  }
+
+  private async interruptActive(active: ActiveTurn) {
+    this.cancelApprovals(active.threadId, "Turn interrupted before a decision");
+    try {
+      await this.request("turn/interrupt", { threadId: active.threadId, turnId: active.turnId }, 5000);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([active.finished, new Promise<void>(resolve => { timer = setTimeout(resolve, 5000); })]);
+      } finally {
+        clearTimeout(timer);
+      }
+    } catch { /* A completed turn may reject an interrupt. Reconcile its actual status. */ }
+    if (active.settled) return;
+    try {
+      const result = await this.request("thread/read", { threadId: active.threadId, includeTurns: true }, 5000);
+      const turn = result?.thread?.turns?.find((item: any) => item.id === active.turnId);
+      if (turn && ["completed", "interrupted", "failed"].includes(turn.status)) {
+        this.settleTurn(active, turn.status, turn.error?.message, turn);
+        return;
+      }
+    } catch { /* The original turn remains unconfirmed. */ }
+    if (!active.settled) {
+      this.unresolved.add(active.threadId);
+      this.settleTurn(active, "failed", "Codex did not confirm that the turn stopped", null, true);
     }
   }
 
   interruptForTask(taskId: string) {
-    const active = [...this.activeByTurn.values()].find(
-      (value) => value.taskId === taskId,
-    );
-    if (!active) return;
-    void this.interrupt(active.threadId, active.turnId).catch((error) =>
-      event(`Codex interrupt failed: ${redact(error)}`, "Codex", "error"),
-    );
+    const active = [...this.activeByThread.values()].find(value => value.taskId === taskId);
+    if (active) void this.interrupt(active.threadId, active.turnId);
   }
 
   private cancelApprovals(threadId: string, note: string) {
@@ -1191,6 +1256,7 @@ class CodexManager {
       if (approval.threadId === threadId) {
         clearTimeout(approval.timer);
         this.approvals.delete(rpcId);
+        approval.resolve(null);
         db.prepare(
           "UPDATE approvals SET status='cancelled',note=?,decided_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'",
         ).run(note, approval.approvalId);
@@ -1320,13 +1386,14 @@ class CodexManager {
     db.prepare(
       "UPDATE approvals SET status='cancelled',note='Worker restarted before a decision',decided_at=CURRENT_TIMESTAMP WHERE provider='codex' AND status='pending'",
     ).run();
-    this.failAll(new OperationError("Codex app-server is not running"));
-    this.child = null;
+    this.shutdown();
     this.loaded.clear();
+    this.unresolved.clear();
   }
 
   shutdown() {
     this.shuttingDown = true;
+    this.failAll(new OperationError("Codex app-server stopped before turn completion"));
     try {
       if (this.child) this.child.kill("SIGTERM");
     } catch {}

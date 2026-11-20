@@ -635,11 +635,8 @@ export function featureAction(
         "UPDATE attention_requests SET status='resolved',reply=?,resolved_at=CURRENT_TIMESTAMP WHERE id=?",
       ).run(a.reply, a.id);
       db.prepare(
-        "UPDATE tasks SET status='queued',error=NULL,updated=CURRENT_TIMESTAMP WHERE id=? AND status='blocked'",
-      ).run(t.id);
-      db.prepare(
-        "UPDATE tasks SET status='queued',error=NULL WHERE run_id=? AND status='blocked' AND error='A dependency failed; retry it first.'",
-      ).run(run.id);
+        "UPDATE tasks SET status=?,error=NULL,updated=CURRENT_TIMESTAMP WHERE id=? AND status='blocked' AND stop_requested IS NULL",
+      ).run(active.has(t.id) ? "running" : "queued", t.id);
       publicMessage(t.id, "User", "answer", a.reply);
       event("Human question answered", t.agent);
       return { ok: true };
@@ -714,6 +711,10 @@ export function featureAction(
               : "active",
           r.id,
         );
+        if (a.action !== "cancel") {
+          event(`Run ${a.action} requested`, "User");
+          return { ok: true, affected: (db.prepare("SELECT count(*) AS n FROM tasks WHERE run_id=? AND status NOT IN ('completed','cancelled')").get(r.id) as { n: number }).n };
+        }
         ts = db
           .prepare("SELECT * FROM tasks WHERE run_id=?")
           .all(r.id) as any[];
@@ -726,20 +727,19 @@ export function featureAction(
             "UPDATE attention_requests SET status='cancelled',resolved_at=CURRENT_TIMESTAMP WHERE task_id=? AND status='pending'",
           ).run(t.id);
         if (a.action === "resume") {
-          if (t.status !== "paused") continue;
-          const pending = db
-            .prepare(
-              "SELECT id FROM approvals WHERE task_id=? AND status='pending' LIMIT 1",
-            )
-            .get(t.id);
-          db.prepare(
-            "UPDATE tasks SET status=?,stop_requested=NULL,updated=CURRENT_TIMESTAMP WHERE id=?",
-          ).run(pending ? "approval" : "queued", t.id);
-        } else if (active.has(t.id))
+          if (t.stop_requested === "cancel") continue;
+          if (active.has(t.id) && t.stop_requested === "pause") {
+            db.prepare("UPDATE tasks SET stop_requested=NULL,updated=CURRENT_TIMESTAMP WHERE id=?").run(t.id);
+          } else if (t.status === "paused") {
+            db.prepare("UPDATE approvals SET status='cancelled',decided_at=CURRENT_TIMESTAMP WHERE task_id=? AND status='pending'").run(t.id);
+            db.prepare("UPDATE tasks SET status='queued',stop_requested=NULL,error=NULL,next_at=0,updated=CURRENT_TIMESTAMP WHERE id=?").run(t.id);
+          } else continue;
+        } else if (active.has(t.id)) {
+          if (t.stop_requested === "cancel" && a.action !== "cancel") continue;
           db.prepare(
             "UPDATE tasks SET stop_requested=?,updated=CURRENT_TIMESTAMP WHERE id=?",
           ).run(a.action, t.id);
-        else {
+        } else {
           if (
             a.action === "pause" &&
             !["queued", "approval", "paused"].includes(t.status)

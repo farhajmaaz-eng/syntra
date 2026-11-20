@@ -248,24 +248,21 @@ export async function action(path: string, b: any) {
         .get(a.id)
     )
       throw new Error("Answer the pending question on Home before retrying");
-    if (!t || !["failed", "blocked"].includes(t.status))
+    if (!t || active.has(t.id) || !["active", "paused"].includes(run?.status) || !["failed", "blocked"].includes(t.status))
       throw new Error("Task cannot be retried");
     if (
       (
         db
           .prepare(
-            "SELECT count(*) AS n FROM tool_calls WHERE task_id=? AND status='uncertain'",
+            "SELECT count(*) AS n FROM tool_calls WHERE task_id=? AND status IN ('running','uncertain')",
           )
           .get(t.id) as any
       ).n
     )
       throw new Error("Resolve uncertain operations in Reviews first");
     db.prepare(
-      "UPDATE tasks SET status='queued',attempts=0,next_at=0,steps=0,error=NULL WHERE id=?",
+      "UPDATE tasks SET status='queued',attempts=0,next_at=0,stop_requested=NULL,error=NULL,updated=CURRENT_TIMESTAMP WHERE id=?",
     ).run(t.id);
-    db.prepare(
-      "UPDATE tasks SET status='queued',error=NULL WHERE run_id=? AND status='blocked' AND error='A dependency failed; retry it first.'",
-    ).run(t.run_id);
     return { ok: true };
   }
   if (path === "review") return decideRun(b);
@@ -398,8 +395,7 @@ export function ensureEmbeddedWorkerStarted() {
     if (
       !state.ticking &&
       !connecting &&
-      !maintaining &&
-      !codex.busy()
+      !maintaining
     ) {
       state.ticking = true;
       void tick()

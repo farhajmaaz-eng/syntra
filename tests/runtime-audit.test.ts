@@ -59,6 +59,10 @@ beforeEach(async () => {
   ])
     store.db.prepare(`DELETE FROM ${table}`).run();
   store.set("paused", false);
+  if (!codex.status().running) {
+    await codex.ensureStarted();
+    await codex.loginApiKey("sk-fixture-codex-key-1234567890");
+  }
   store.set("concurrency", 3);
   store.set("taskTimeoutMs", 10000);
   store.set("maxTasksPerRun", 50);
@@ -296,4 +300,178 @@ it("rejects a second worker before it can touch SQLite or recover another worker
     process.env.SYNTRA_DATA_DIR = previous;
     rmSync(locked, { recursive: true, force: true });
   }
+});
+
+it("completes a direct Lead answer and sends it to review without adding a Tester", async () => {
+  const lead = run("Lead", "Explain a Roblox concept without implementation");
+  const runId = store.task(lead).run_id;
+  store.db.prepare("UPDATE runs SET plan_status='pending' WHERE id=?").run(runId);
+  await runtime.tick();
+  await idle();
+  expect(store.task(lead).status).toBe("completed");
+  await runtime.tick();
+  expect(store.db.prepare("SELECT status,plan_status FROM runs WHERE id=?").get(runId))
+    .toEqual({ status: "review", plan_status: "automatic" });
+  expect(store.db.prepare("SELECT agent FROM tasks WHERE run_id=?").all(runId)).toEqual([{ agent: "Lead" }]);
+});
+
+it("holds new work during a team pause and keeps an unrelated Lead running during a task stop", async () => {
+  const lead = run("Lead");
+  const builder = run("Builder");
+  await runtime.tick();
+  await started(2);
+  const frame = run("Frame");
+  store.set("paused", true);
+  featureAction("tasks/control", { id: builder, action: "pause" }, runtime.active);
+  runtime.interruptStopped();
+  await runtime.tick();
+  for (let i = 0; i < 100 && runtime.active.has(builder); i++) await new Promise(resolve => setTimeout(resolve, 20));
+  expect(store.task(builder)).toMatchObject({ status: "paused", attempts: 0 });
+  expect(runtime.active.has(lead)).toBe(true);
+  expect(store.task(frame).status).toBe("queued");
+  store.set("paused", false);
+  featureAction("tasks/control", { id: builder, action: "resume" }, runtime.active);
+  await runtime.tick();
+  await started(3);
+  expect(runtime.active.has(builder)).toBe(true);
+  expect(runtime.active.has(frame)).toBe(true);
+});
+
+it("honors rapid pause then resume without leaving a stopped task stranded", async () => {
+  const id = run("Builder");
+  await runtime.tick();
+  await started(1);
+  featureAction("tasks/control", { id, action: "pause" }, runtime.active);
+  runtime.interruptStopped();
+  featureAction("tasks/control", { id, action: "resume" }, runtime.active);
+  await idle();
+  expect(store.task(id)).toMatchObject({ status: "queued", attempts: 0, stop_requested: null });
+});
+
+it("resuming a run keeps individually paused tasks paused and does not spend attempts", async () => {
+  const id = run("Builder");
+  const runId = store.task(id).run_id;
+  const manual = store.addTask(runId, "Frame", "Manually paused", "Leave paused");
+  featureAction("tasks/control", { id: manual, action: "pause" }, runtime.active);
+  await runtime.tick();
+  await started(1);
+  featureAction("runs/control", { id: runId, action: "pause" }, runtime.active);
+  runtime.interruptStopped();
+  await idle();
+  expect(store.task(id)).toMatchObject({ status: "queued", attempts: 0 });
+  featureAction("runs/control", { id: runId, action: "resume" }, runtime.active);
+  expect(store.task(manual).status).toBe("paused");
+  await runtime.tick();
+  await started(1);
+  expect(runtime.active.has(id)).toBe(true);
+});
+
+it("retries a confirmed transient failure before work and does not replay after recorded work", async () => {
+  const clean = run("Architect", "FIXTURE_TRANSIENT");
+  const prior = run("Builder", "FIXTURE_TRANSIENT");
+  store.db.prepare("INSERT INTO tool_calls(id,task_id,tool,args,status) VALUES ('prior',?,'save_artifact','{}','done')").run(prior);
+  await runtime.tick();
+  await idle();
+  expect(store.task(clean)).toMatchObject({ status: "queued", attempts: 1 });
+  expect(store.task(prior)).toMatchObject({ status: "failed", attempts: 1 });
+  store.db.prepare("UPDATE tasks SET next_at=0 WHERE id=?").run(clean);
+  await runtime.tick();
+  await idle();
+  expect(store.task(clean).status).toBe("completed");
+});
+
+it("does not apply task execution timeouts to a pending human question", async () => {
+  store.set("taskTimeoutMs", 1000);
+  const id = run("Architect", calls([{ tool: "ask_human", arguments: { question: "Which branch should we keep?" } }]));
+  await runtime.tick();
+  let request: { id: string } | undefined;
+  for (let i = 0; i < 75 && !request; i++) {
+    request = store.db.prepare("SELECT id FROM attention_requests WHERE task_id=?").get(id) as { id: string } | undefined;
+    if (!request) await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  expect(request).toBeDefined();
+  await new Promise(resolve => setTimeout(resolve, 1100));
+  expect(runtime.active.has(id)).toBe(true);
+  expect(store.task(id).status).toBe("blocked");
+  featureAction("attention/reply", { id: request!.id, reply: "Keep main" }, runtime.active);
+  expect(store.task(id).status).toBe("running");
+  await idle();
+  expect(store.task(id).status).toBe("completed");
+}, 10000);
+
+it("recovers orphaned questions and honors a paused approval during a restart", () => {
+  const orphan = run("Architect");
+  const paused = run("Frame");
+  store.db.prepare("UPDATE tasks SET status='blocked' WHERE id=?").run(orphan);
+  store.db.prepare("UPDATE tasks SET status='approval',stop_requested='pause' WHERE id=?").run(paused);
+  store.db.prepare("INSERT INTO attention_requests(id,task_id,call_id,question,priority) VALUES ('orphan',?,'ask','Waiting?',1)").run(orphan);
+  runtime.recover();
+  expect(store.task(orphan).status).toBe("failed");
+  expect(store.task(paused)).toMatchObject({ status: "paused", stop_requested: null });
+  expect(store.db.prepare("SELECT status FROM attention_requests WHERE id='orphan'").get()).toEqual({ status: "cancelled" });
+});
+
+
+it("preserves transcripts and dependency state on manual retry", async () => {
+  const dependency = run("Architect");
+  const runId = store.task(dependency).run_id;
+  const dependant = store.addTask(runId, "Builder", "Wait for successful work", "Wait", [dependency]);
+  store.db.prepare("UPDATE tasks SET status='failed',steps=4,attempts=2 WHERE id=?").run(dependency);
+  store.db.prepare("UPDATE tasks SET status='blocked',error='A dependency failed; retry it first.' WHERE id=?").run(dependant);
+  const { action } = await import("../worker/service");
+  await action("retry", { id: dependency });
+  expect(store.task(dependency)).toMatchObject({ status: "queued", steps: 4, attempts: 0 });
+  expect(store.task(dependant).status).toBe("blocked");
+});
+
+it("keeps validation for a Lead turn with neither an answer nor delegated work", async () => {
+  const id = run("Lead", "FIXTURE_EMPTY");
+  await runtime.tick();
+  await idle();
+  expect(store.task(id)).toMatchObject({ status: "failed" });
+  expect(store.task(id).error).toContain("without an answer or delegated work");
+});
+
+it("keeps Codex approval waits in sync with the task status", async () => {
+  store.set("codexAutoApprove", false);
+  const id = run("Architect", "FIXTURE_APPROVAL");
+  try {
+    await runtime.tick();
+    let approval: { id: string } | undefined;
+    for (let i = 0; i < 100 && !approval; i++) {
+      approval = store.db.prepare("SELECT id FROM approvals WHERE task_id=? AND provider='codex' AND status='pending'").get(id) as
+        { id: string } | undefined;
+      if (!approval) await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    expect(approval).toBeDefined();
+    expect(store.task(id).status).toBe("approval");
+    const { decideApproval } = await import("../worker/features");
+    decideApproval({ id: approval!.id, approved: true, note: "Proceed" });
+    await idle();
+    expect(store.task(id).status).toBe("completed");
+  } finally {
+    store.set("codexAutoApprove", true);
+  }
+});
+
+it("cannot complete a task while a tool outcome remains uncertain", async () => {
+  const id = run("Builder", "Inspect finished work");
+  store.db.prepare("INSERT INTO tool_calls(id,task_id,tool,args,status) VALUES ('unknown-outcome',?,'execute_luau','{}','uncertain')").run(id);
+  await runtime.tick();
+  await idle();
+  expect(store.task(id).status).toBe("failed");
+  expect(store.task(id).error).toContain("tool outcome is still unresolved");
+});
+
+it("upgrades shipped Lead instructions while preserving a custom prompt", () => {
+  const original = "Own the request. Inspect the active game, clarify requirements in your deliverable, and delegate concrete, dependency-ordered tasks using delegate. Do not implement changes yourself. Delegate a final Tester task depending on every implementation task. Each task needs measurable acceptance criteria. Summarize the plan and risks.";
+  store.db.prepare("UPDATE agents SET prompt=? WHERE name='Lead'").run(original);
+  store.migrateLeadPrompt();
+  const read = () => store.db.prepare("SELECT prompt FROM agents WHERE name='Lead'").get() as { prompt: string };
+  const upgraded = read().prompt;
+  expect(upgraded).toContain("Answer directly");
+  store.db.prepare("UPDATE agents SET prompt='Custom project instructions' WHERE name='Lead'").run();
+  store.migrateLeadPrompt();
+  expect(read().prompt).toBe("Custom project instructions");
+  store.db.prepare("UPDATE agents SET prompt=? WHERE name='Lead'").run(upgraded);
 });

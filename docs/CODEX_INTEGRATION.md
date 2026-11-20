@@ -18,16 +18,7 @@ There is no simulator or mock execution path in the application.
 | Tester | `gpt-6.1-terra` | Independent evidence review and verdict |
 | Codex | `gpt-6.1-terra` | Focused local-repository coding |
 
-The main starting instructions are injected into every Lead turn and shown on
-the Codex page:
-
-> You are the main Codex orchestrator for Syntra Studio. Before implementing
-> anything, set up the seven subagents by delegating concrete,
-> dependency-ordered tasks with the delegate tool: Architect, Builder, Frame,
-> Scenic, Balance, Tester, and Codex. The main Lead runs on `gpt-6.2-sol`; the
-> seven subagents run on `gpt-6.1-terra`. Include a final Tester task that
-> depends on every implementation task. Do not mark the request complete until
-> the subagents and Tester have finished.
+Lead answers questions and research requests directly. For implementation, it delegates to the specialists needed for the request. Tester verifies every implementation dependency before review.
 
 Each delegated task gets its own Codex thread, prompt, private memory, dynamic
 tool set and model. A worker task cannot run two turns at once, and one agent
@@ -36,7 +27,7 @@ never runs two tasks simultaneously.
 ## Protocol and lifecycle
 
 - The worker spawns `codex app-server` lazily and speaks newline-delimited
-  JSON-RPC over stdin/stdout. It calls `initialize`, then `account/read`,
+  JSON-RPC over stdin/stdout. It calls `initialize`, sends `initialized`, then calls `account/read`,
   `model/list`, `thread/start` or `thread/resume`, and `turn/start`.
 - `thread/start` receives `dynamicTools`: Syntra’s internal tools (`delegate`,
   `handoff`, `ask_human`, `remember`, `library_search`, `library_read`,
@@ -50,11 +41,8 @@ never runs two tasks simultaneously.
   `item/completed`, `turn/diff/updated`, `turn/completed` and
   `thread/tokenUsage/updated`. Selected events are persisted in
   `codex_events`; partial answers and diffs are checkpointed in `codex_turns`.
-- `turn/interrupt` is sent when a task is paused, cancelled, times out, or when
-  the user interrupts a session. The worker waits for the app-server’s
-  completion notification and records the turn as interrupted if the server
-  does not acknowledge in time. Local operations are never replayed
-  automatically.
+- Team pause holds scheduling and leaves active turns running. Pausing or cancelling a specific run or task targets its turns. The worker sends one `turn/interrupt` per turn and checks `thread/read` if the terminal notification is missing.
+- Unconfirmed operations stay visible for review. Confirmed transient failures receive bounded retries before any recorded tool action, file diff, or approval. Execution deadlines are deferred while a human decision is pending.
 - `item/commandExecution/requestApproval`, `item/fileChange/requestApproval`,
   `item/permissions/requestApproval` and `item/tool/requestUserInput` become
   durable approval rows. Approve or reject them in the Codex page or in

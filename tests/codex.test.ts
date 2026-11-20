@@ -217,3 +217,48 @@ it("gives new standalone Codex sessions exact playbook retrieval", async () => {
   expect(turn.result).toContain("sectionId");
   expect(turn.result).toContain("ProcessReceipt");
 });
+
+it("persists an early terminal event and ignores stale events on the next turn", async () => {
+  const session = await codex.createSession({ title: "Turn event ordering", cwd: project });
+  const early = await codex.runSessionTurn({ sessionId: session.id, prompt: "FIXTURE_EARLY" });
+  expect(early.text).toBe("Early completed answer");
+  expect(db.prepare("SELECT status,result FROM codex_turns WHERE id=?").get(early.turnId))
+    .toEqual({ status: "completed", result: "Early completed answer" });
+  const following = await codex.runSessionTurn({ sessionId: session.id, prompt: "FIXTURE_STALE" });
+  expect(following.turnId).not.toBe(early.turnId);
+  expect(following.text).toContain("Fixture completed");
+  expect(following.text).not.toContain("STALE TEXT");
+});
+
+it("interrupts once during turn startup while rejecting a second turn on that session", async () => {
+  const session = await codex.createSession({ title: "Scoped interruption", cwd: project });
+  const running = codex.runSessionTurn({ sessionId: session.id, prompt: "FIXTURE_DELAY_START FIXTURE_HOLD" });
+  const rejected = expect(running).rejects.toThrow(/interrupted/);
+  await waitFor(() => codex.busy());
+  await expect(codex.runSessionTurn({ sessionId: session.id, prompt: "Concurrent turn" })).rejects.toThrow(/active turn/);
+  await Promise.all([codex.interruptSession(session.id), codex.interruptSession(session.id)]);
+  await rejected;
+  const events = db.prepare("SELECT type FROM codex_events WHERE session_id=? AND type LIKE 'fixture/%'").all(session.id);
+  expect(events).toEqual([{ type: "fixture/interrupt" }]);
+  expect(codexModule.codexSessionDetail(session.id).session.status).toBe("idle");
+});
+
+it("reconciles an acknowledged interrupt whose terminal notification was lost", async () => {
+  const session = await codex.createSession({ title: "Read thread state", cwd: project });
+  const running = codex.runSessionTurn({ sessionId: session.id, prompt: "FIXTURE_HOLD FIXTURE_SILENT_INTERRUPT" });
+  const rejected = expect(running).rejects.toThrow(/interrupted/);
+  await waitFor(() => db.prepare("SELECT id FROM codex_turns WHERE session_id=?").get(session.id));
+  await codex.interruptSession(session.id);
+  await rejected;
+  expect(codexModule.codexSessionDetail(session.id).turns[0]).toMatchObject({ status: "interrupted" });
+}, 10000);
+
+it("settles the owning session when the App Server process exits and can restart", async () => {
+  const session = await codex.createSession({ title: "Disconnected turn", cwd: project });
+  await expect(codex.runSessionTurn({ sessionId: session.id, prompt: "FIXTURE_EXIT" })).rejects.toThrow(/app-server exited/);
+  expect(codexModule.codexSessionDetail(session.id).turns[0]).toMatchObject({ status: "failed" });
+  expect(codex.busy()).toBe(false);
+  await codex.ensureStarted();
+  await codex.loginApiKey("sk-fixture-codex-key-1234567890");
+  expect((await codex.runSessionTurn({ sessionId: session.id, prompt: "FIXTURE_EARLY" })).text).toBe("Early completed answer");
+}, 10000);

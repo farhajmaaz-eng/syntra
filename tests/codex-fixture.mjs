@@ -16,6 +16,10 @@ function note(method, params) {
   send({ method, params, emittedAtMs: Date.now() });
 }
 function finishTurn(turnId, status, error) {
+  const entry = turns.get(turnId);
+  entry.status = status;
+  entry.error = error;
+  if (entry.prompt.includes("FIXTURE_SILENT_INTERRUPT") && status === "interrupted") return;
   setTimeout(() => {
     note("turn/completed", {
       threadId: turns.get(turnId).threadId,
@@ -87,6 +91,17 @@ function extractCalls(prompt) {
 async function runTurn(threadId, turnId, prompt) {
   if (/FIXTURE_HOLD/.test(prompt)) {
     turns.get(turnId).interruptible = true;
+    return;
+  }
+  if (/FIXTURE_EMPTY/.test(prompt)) {
+    finishTurn(turnId, "completed");
+    return;
+  }
+  if (/FIXTURE_EXIT/.test(prompt)) {
+    process.exit(17);
+  }
+  if (/FIXTURE_TRANSIENT/.test(prompt) && [...turns.values()].filter(turn => turn.threadId === threadId).length === 1) {
+    finishTurn(turnId, "failed", "Provider temporarily overloaded");
     return;
   }
   if (/FIXTURE_FAIL/.test(prompt)) {
@@ -216,6 +231,7 @@ for await (const line of rl) {
         platformOs: "linux",
       },
     });
+  else if (method === "initialized") continue;
   else if (method === "account/read")
     send({ id, result: { account, requiresOpenaiAuth: true } });
   else if (method === "account/login/start") {
@@ -317,16 +333,31 @@ for await (const line of rl) {
         disabledPluginIds: [],
       },
     });
+  } else if (method === "thread/read") {
+    const members = [...turns.entries()].filter(([, turn]) => turn.threadId === params.threadId);
+    send({ id, result: { thread: { id: params.threadId,
+      status: { type: members.some(([, turn]) => turn.status === "inProgress") ? "active" : "idle" },
+      turns: members.map(([id, turn]) => ({ id, status: turn.status, error: turn.error ? { message: turn.error } : null })),
+    } } });
   } else if (method === "turn/start") {
     const turnId = randomUUID();
     const prompt = params.input?.map((item) => item.text).join(" ") || "";
-    turns.set(turnId, { threadId: params.threadId, prompt });
-    send({
-      id,
-      result: {
-        turn: { id: turnId, status: "inProgress", items: [], error: null },
-      },
-    });
+    const prior = [...turns.entries()].findLast(([, turn]) => turn.threadId === params.threadId);
+    turns.set(turnId, { threadId: params.threadId, prompt, status: "inProgress", interrupts: 0 });
+    const response = { id, result: { turn: { id: turnId, status: "inProgress", items: [], error: null } } };
+    if (prompt.includes("FIXTURE_EARLY")) {
+      note("item/agentMessage/delta", { threadId: params.threadId, turnId, delta: "Early completed answer" });
+      turns.get(turnId).status = "completed";
+      note("turn/completed", { threadId: params.threadId, turn: { id: turnId, status: "completed", items: [] } });
+      send(response);
+      continue;
+    }
+    if (prior && prompt.includes("FIXTURE_STALE")) {
+      note("item/agentMessage/delta", { threadId: params.threadId, turnId: prior[0], delta: "STALE TEXT" });
+      note("turn/completed", { threadId: params.threadId, turn: { id: prior[0], status: "interrupted", items: [] } });
+    }
+    if (prompt.includes("FIXTURE_DELAY_START")) await new Promise(resolve => setTimeout(resolve, 75));
+    send(response);
     note("turn/started", {
       threadId: params.threadId,
       turn: { id: turnId, status: "inProgress", items: [] },
@@ -334,8 +365,14 @@ for await (const line of rl) {
     void runTurn(params.threadId, turnId, prompt);
   } else if (method === "turn/interrupt") {
     const turn = turns.get(params.turnId);
-    if (turn) finishTurn(params.turnId, "interrupted");
-    send({ id, result: {} });
+    if (turn && ++turn.interrupts === 1) {
+      note("fixture/interrupt", { threadId: turn.threadId, turnId: params.turnId });
+      finishTurn(params.turnId, "interrupted");
+      send({ id, result: {} });
+    } else if (turn) {
+      note("fixture/duplicateInterrupt", { threadId: turn.threadId, turnId: params.turnId });
+      send({ id, error: { message: "Duplicate interrupt" } });
+    } else send({ id, error: { message: "Unknown turn" } });
   } else if (method === "turn/steer") send({ id, result: {} });
   else send({ id, error: { code: -32601, message: `Unsupported ${method}` } });
 }

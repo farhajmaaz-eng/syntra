@@ -480,7 +480,7 @@ export default function Studio({
       )}
       {pauseConfirm && (
         <ConfirmDialog
-          title="Pause all agents?"
+          title="Pause task scheduling?"
           confirmLabel="Pause all"
           tone="neutral"
           pending={busy}
@@ -489,8 +489,7 @@ export default function Studio({
             if (await act("pause", { paused: true })) setPauseConfirm(false);
           }}
         >
-          Scheduling and future tool steps will pause. Operations already sent
-          to Studio may finish; recorded changes are preserved.
+          New tasks will wait. Active turns can finish. Pause a specific run or task to interrupt its work.
         </ConfirmDialog>
       )}
       <main id="main-content">

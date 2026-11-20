@@ -110,8 +110,7 @@ const timer = setInterval(() => {
   if (
     !ticking &&
     !isConnecting() &&
-    !isMaintaining() &&
-    !codex.busy()
+    !isMaintaining()
   ) {
     ticking = true;
     void tick()
@@ -123,12 +122,12 @@ let shuttingDown = false;
 async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
-  set("paused", true);
   clearInterval(timer);
   abortAll();
-  while (active.size) await new Promise((r) => setTimeout(r, 200));
-  await studio.close();
+  const deadline = Date.now() + 15_000;
+  while (active.size && Date.now() < deadline) await new Promise((r) => setTimeout(r, 200));
   codex.shutdown();
+  await studio.close();
   wss.close();
   server.close();
   db.close();

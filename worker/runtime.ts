@@ -9,7 +9,7 @@ import {
 import { resolve } from "node:path";
 import { z } from "zod";
 import { db, get, set, task, addTask, event, dataDir } from "./store";
-import { roles, isMutation, readers, type Role } from "../src/lib/roles";
+import { leadStart, roles, isMutation, readers, type Role } from "../src/lib/roles";
 import { studio, StudioCallError } from "./mcp";
 import { OperationError, redact } from "./errors";
 import { importDesignSchema, renderDesignInstall, stageDesign, stagedDesign, stageDesignSchema } from "./design-handoff";
@@ -27,23 +27,24 @@ import { operationRisk, pitchSections, assetKinds } from "../src/lib/feature-con
 
 export const active = new Set<string>();
 const controllers = new Map<string, AbortController>();
+class TaskControlStop extends OperationError {}
 
 export function interruptStopped() {
   for (const [id, controller] of controllers) {
+    if (controller.signal.aborted) continue;
     const t = task(id);
     const run: any =
       t && db.prepare("SELECT status FROM runs WHERE id=?").get(t.run_id);
     if (
       t?.stop_requested ||
-      ["paused", "cancelled"].includes(run?.status) ||
-      get("paused")
+      ["paused", "cancelled"].includes(run?.status)
     ) {
-      codex.interruptForTask(id);
-      cancelToolApprovals(id, new OperationError("Task stopped by user"));
+      const reason = new TaskControlStop("Task stopped by user");
+      cancelToolApprovals(id, reason);
       db.prepare(
         "UPDATE approvals SET status='cancelled',note='The task stopped before a decision',decided_at=CURRENT_TIMESTAMP WHERE task_id=? AND status='pending' AND provider='studio'",
       ).run(id);
-      controller.abort(new OperationError("Task stopped by user"));
+      controller.abort(reason);
     }
   }
 }
@@ -358,6 +359,7 @@ async function executeTool(t: any, role: Role, call: CodexToolCall) {
   let args = call.arguments && typeof call.arguments === "object" ? call.arguments : {};
   const ledgerId = `${t.id}:${call.callId}`;
   const old: any = db.prepare("SELECT * FROM tool_calls WHERE id=?").get(ledgerId);
+  signalFor(t.id)?.throwIfAborted();
   if (old?.status === "done") {
     const stored = JSON.parse(old.result);
     return outputText(name === "design_stage" ? stored.summary : stored);
@@ -821,14 +823,12 @@ async function executeTool(t: any, role: Role, call: CodexToolCall) {
   return outputText(result);
 }
 
-const LEAD_START = `You are Syntra's Lead. Delegate only the roles needed for the requested outcome and order their tasks by dependency. A Penpot-to-Roblox run needs Frame to inspect, edit if requested, and call design_stage. Builder must directly depend on that Frame task, inspect StarterGui, use design_import, and inspect the resulting ScreenGui. Assign Tester after every implementation dependency and give Tester measurable acceptance criteria. Wait for the recorded evidence before declaring completion.`;
-
 function promptFor(t: any, run: any, deps: any[]) {
   const agent: any = db
     .prepare("SELECT * FROM agents WHERE name=?")
     .get(t.agent);
   return [
-    ...(t.agent === "Lead" ? [LEAD_START] : []),
+    ...(t.agent === "Lead" ? [leadStart] : []),
     `You are ${t.agent}, the ${roles[t.agent as Role]?.title || "agent"} subagent in Syntra Studio. ${roles[t.agent as Role]?.brief || ""}`,
     `Independent system instructions: ${agent?.prompt || ""}`,
     `Syntra request: ${run?.request || ""}`,
@@ -917,15 +917,13 @@ async function runTask(taskId: string) {
     publicMessage(taskId, initial.agent, "response", result.text, "complete", publicId);
     const current = task(taskId);
     if (stopAtBoundary(taskId)) return;
-    if (
-      current.agent === "Lead" &&
-      !db
-        .prepare("SELECT id FROM tasks WHERE run_id=? AND agent!='Lead' LIMIT 1")
-        .get(current.run_id)
-    )
-      throw new OperationError(
-        "Lead ended without delegating concrete work. Retry with a clear implementation request.",
-      );
+    if (current.agent === "Lead" && !result.text?.trim() &&
+        !db.prepare("SELECT 1 FROM tasks WHERE run_id=? AND agent!='Lead' LIMIT 1").get(current.run_id)) {
+      throw new OperationError("Lead completed without an answer or delegated work.");
+    }
+    if (db.prepare("SELECT 1 FROM tool_calls WHERE task_id=? AND status IN ('running','uncertain')").get(taskId)) {
+      throw new OperationError("A tool outcome is still unresolved. Review it before retrying.", false, true);
+    }
     if (current.agent === "Tester" && !current.result.startsWith("VERIFIED:"))
       throw new Error("Tester ended without a passing verify verdict.");
     if (current.agent !== "Tester" && requiresReadback(taskId, run))
@@ -955,13 +953,13 @@ async function runTask(taskId: string) {
     event(`Completed: ${current.title}`, current.agent);
   } catch (error) {
     db.prepare(
-      "UPDATE agent_messages SET status='interrupted',updated=CURRENT_TIMESTAMP WHERE id=?",
+      "UPDATE agent_messages SET status='interrupted',updated=CURRENT_TIMESTAMP WHERE id=? AND status='streaming'",
     ).run(publicId);
-    if (stopAtBoundary(taskId)) return;
+    if (!(error instanceof OperationError && error.uncertain) && stopAtBoundary(taskId)) return;
     throw new OperationError(
       `Codex task failed: ${redact(error)}. Inspect the session diff before retrying.`,
-      false,
-      error instanceof OperationError ? error.uncertain : false,
+      error instanceof OperationError && error.retryable,
+      error instanceof OperationError && error.uncertain,
     );
   }
 }
@@ -981,29 +979,22 @@ export function clearCheckpoints() {
 
 export function stopAtBoundary(id: string) {
   const t = task(id);
-  if (!t) return true;
+  if (!t || ["completed", "cancelled"].includes(t.status)) return true;
   const run: any = db
     .prepare("SELECT status FROM runs WHERE id=?")
     .get(t.run_id);
   const requested = run?.status === "cancelled" ? "cancel" : t.stop_requested;
-  if (requested || get("paused") || run?.status === "paused") {
-    const status =
-      requested === "cancel"
-        ? "cancelled"
-        : requested === "pause" || run?.status === "paused"
-          ? "paused"
-          : "queued";
-    db.prepare(
-      "UPDATE tasks SET status=?,stop_requested=NULL,updated=CURRENT_TIMESTAMP WHERE id=?",
-    ).run(status, id);
-    if (status === "cancelled") {
-      db.prepare(
-        "UPDATE attention_requests SET status='cancelled',resolved_at=CURRENT_TIMESTAMP WHERE task_id=? AND status='pending'",
-      ).run(id);
-      db.prepare(
-        "UPDATE approvals SET status='cancelled',decided_at=CURRENT_TIMESTAMP WHERE task_id=? AND status='pending'",
-      ).run(id);
-    }
+  const controlled = signalFor(id)?.reason instanceof TaskControlStop;
+  if (requested || run?.status === "paused" || controlled) {
+    const status = requested === "cancel" ? "cancelled" : requested === "pause" ? "paused" : "queued";
+    const uncertain = db.prepare("SELECT 1 FROM tool_calls WHERE task_id=? AND status IN ('running','uncertain')").get(id);
+    if (uncertain && status !== "cancelled") return false;
+    db.transaction(() => {
+      db.prepare("UPDATE tasks SET status=?,stop_requested=NULL,error=NULL,next_at=0,updated=CURRENT_TIMESTAMP WHERE id=?")
+        .run(status, id);
+      db.prepare("UPDATE attention_requests SET status='cancelled',resolved_at=CURRENT_TIMESTAMP WHERE task_id=? AND status='pending'").run(id);
+      db.prepare("UPDATE approvals SET status='cancelled',decided_at=CURRENT_TIMESTAMP WHERE task_id=? AND status='pending'").run(id);
+    })();
     return true;
   }
   return ["cancelled", "paused"].includes(t.status);
@@ -1011,35 +1002,36 @@ export function stopAtBoundary(id: string) {
 
 export function recover() {
   codex.recover();
-  db.prepare("DELETE FROM locks").run();
-  db.prepare(
-    "UPDATE tasks SET status='cancelled',stop_requested=NULL WHERE status='running' AND stop_requested='cancel'",
-  ).run();
-  db.prepare(
-    "UPDATE tasks SET status='paused',stop_requested=NULL WHERE status='running' AND stop_requested='pause'",
-  ).run();
-  db.prepare(
-    "UPDATE tasks SET status='failed',error='Worker restarted during a Codex turn. Inspect the session diff before retrying.',stop_requested=NULL WHERE status IN ('running','approval')",
-  ).run();
-  db.prepare(
-    "UPDATE tool_calls SET status='uncertain' WHERE status='running'",
-  ).run();
-  db.prepare(
-    "UPDATE agent_messages SET status='interrupted' WHERE status='streaming'",
-  ).run();
-  db.prepare(
-    "UPDATE approvals SET status='cancelled',note='Worker restarted before a decision',decided_at=CURRENT_TIMESTAMP WHERE status='pending'",
-  ).run();
-  db.prepare(
-    "UPDATE attention_requests SET status='cancelled',resolved_at=CURRENT_TIMESTAMP WHERE status='pending' AND task_id IN (SELECT id FROM tasks WHERE status='failed')",
-  ).run();
+  db.transaction(() => {
+    db.prepare("DELETE FROM locks").run();
+    db.prepare(
+      "UPDATE tasks SET status='cancelled',stop_requested=NULL WHERE status NOT IN ('completed','cancelled') AND (stop_requested='cancel' OR run_id IN (SELECT id FROM runs WHERE status='cancelled'))",
+    ).run();
+    db.prepare(
+      "UPDATE tasks SET status='paused',stop_requested=NULL WHERE stop_requested='pause' AND status IN ('running','approval','blocked') AND NOT EXISTS (SELECT 1 FROM tool_calls WHERE task_id=tasks.id AND status IN ('running','uncertain'))",
+    ).run();
+    db.prepare(
+      "UPDATE tasks SET status='failed',error='Worker restarted during a Codex turn. Inspect the session diff before retrying.',stop_requested=NULL WHERE status IN ('running','approval') OR (status='blocked' AND (error='Waiting for a human answer' OR EXISTS (SELECT 1 FROM attention_requests WHERE task_id=tasks.id AND status='pending')))",
+    ).run();
+    db.prepare(
+      "UPDATE tool_calls SET status='uncertain' WHERE status='running'",
+    ).run();
+    db.prepare(
+      "UPDATE agent_messages SET status='interrupted' WHERE status='streaming'",
+    ).run();
+    db.prepare(
+      "UPDATE approvals SET status='cancelled',note='Worker restarted before a decision',decided_at=CURRENT_TIMESTAMP WHERE status='pending'",
+    ).run();
+    db.prepare(
+      "UPDATE attention_requests SET status='cancelled',resolved_at=CURRENT_TIMESTAMP WHERE status='pending' AND task_id IN (SELECT id FROM tasks WHERE status IN ('failed','paused','cancelled'))",
+    ).run();
+  })();
   event("Worker started; Codex sessions recovered; unfinished turns require review");
 }
 
 export async function tick() {
   set("workerHeartbeat", Date.now());
   interruptStopped();
-  if (get("paused")) return;
   const runs = db
     .prepare("SELECT * FROM runs WHERE status='active'")
     .all() as any[];
@@ -1067,6 +1059,11 @@ export async function tick() {
         db.prepare(
           "UPDATE tasks SET status='blocked',error='A dependency failed; retry it first.' WHERE id=?",
         ).run(t.id);
+    }
+    if (ts.length && ts.every(task => task.agent === "Lead" && task.status === "completed")) {
+      db.prepare("UPDATE runs SET status='review',plan_status='automatic' WHERE id=? AND status='active'").run(r.id);
+      event("Lead response ready for review", "Lead");
+      continue;
     }
     const implementations = ts.filter((x) => x.agent !== "Tester");
     if (
@@ -1110,6 +1107,7 @@ export async function tick() {
       }
     }
   }
+  if (get("paused")) return;
   const queued = db
     .prepare(
       "SELECT t.* FROM tasks t JOIN runs r ON r.id=t.run_id WHERE t.status='queued' AND t.next_at<=? AND r.status='active' AND (t.agent='Lead' OR r.plan_status!='pending') ORDER BY t.priority DESC,t.created,t.rowid",
@@ -1149,46 +1147,41 @@ export async function tick() {
     active.add(t.id);
     const controller = new AbortController();
     controllers.set(t.id, controller);
-    const timeout = setTimeout(
-      () => controller.abort(new OperationError("Task execution timed out")),
-      get<number>("taskTimeoutMs") || 600000,
-    );
+    const budget = get<number>("taskTimeoutMs") || 600000;
+    let timeout: ReturnType<typeof setTimeout>;
+    function expire() {
+      const waiting = db.prepare("SELECT 1 FROM approvals WHERE task_id=? AND status='pending' UNION ALL SELECT 1 FROM attention_requests WHERE task_id=? AND status='pending' LIMIT 1")
+        .get(t.id, t.id);
+      if (waiting) {
+        waitingAtDeadline = true;
+        timeout = setTimeout(expire, Math.min(1000, budget));
+      } else if (waitingAtDeadline) {
+        waitingAtDeadline = false;
+        timeout = setTimeout(expire, budget);
+      } else {
+        controller.abort(new OperationError("Task execution timed out"));
+      }
+    }
+    let waitingAtDeadline = false;
+    timeout = setTimeout(expire, budget);
     db.prepare("UPDATE tasks SET status='running' WHERE id=?").run(t.id);
     void runTask(t.id)
-      .then(() => {
-        if (task(t.id).status === "running")
-          db.prepare("UPDATE tasks SET status='queued',error=NULL WHERE id=?").run(
-            t.id,
-          );
-      })
       .catch((e) => {
-        const error = redact(e);
-        const attempts = task(t.id).attempts + 1;
-        const uncertain = (
-          db
-            .prepare(
-              "SELECT count(*) AS n FROM tool_calls WHERE task_id=? AND status='uncertain'",
-            )
-            .get(t.id) as any
-        ).n;
-        const stopped = task(t.id).stop_requested;
-        const run: any = db
-          .prepare("SELECT status FROM runs WHERE id=?")
-          .get(t.run_id);
-        const status =
-          stopped === "cancel" || run?.status === "cancelled"
-            ? "cancelled"
-            : uncertain
-              ? "failed"
-              : stopped === "pause" || run?.status === "paused"
-                ? "paused"
-                : get("paused")
-                  ? "queued"
-                  : controller.signal.aborted ||
-                      (e instanceof OperationError && !e.retryable) ||
-                      attempts >= 3
-                    ? "failed"
-                    : "queued";
+        const current = task(t.id);
+        if (!current) return;
+        const uncertain = (e instanceof OperationError && e.uncertain) || Boolean(db.prepare(
+          "SELECT 1 FROM tool_calls WHERE task_id=? AND status IN ('running','uncertain')",
+        ).get(t.id));
+        if ((!uncertain || current.stop_requested === "cancel") && stopAtBoundary(t.id)) return;
+        const error = redact(controller.signal.reason instanceof TaskControlStop ? e : controller.signal.reason ?? e);
+        const attempts = current.attempts + 1;
+        const replayRisk = Boolean(db.prepare(`
+          SELECT 1 FROM tool_calls WHERE task_id=? AND status IN ('running','done','uncertain')
+          UNION ALL SELECT 1 FROM codex_turns WHERE task_id=? AND COALESCE(diff,'')!=''
+          UNION ALL SELECT 1 FROM approvals WHERE task_id=? AND status='approved' LIMIT 1
+        `).get(t.id, t.id, t.id));
+        const status = !uncertain && !controller.signal.aborted && !replayRisk &&
+          e instanceof OperationError && e.retryable && attempts < 3 ? "queued" : "failed";
         db.prepare(
           "UPDATE tasks SET status=?,attempts=?,next_at=?,error=?,stop_requested=NULL,updated=CURRENT_TIMESTAMP WHERE id=?",
         ).run(
@@ -1198,18 +1191,13 @@ export async function tick() {
           error,
           t.id,
         );
-        if (status === "cancelled") {
-          db.prepare(
-            "UPDATE approvals SET status='cancelled',decided_at=CURRENT_TIMESTAMP WHERE task_id=? AND status='pending'",
-          ).run(t.id);
-          db.prepare(
-            "UPDATE attention_requests SET status='cancelled',resolved_at=CURRENT_TIMESTAMP WHERE task_id=? AND status='pending'",
-          ).run(t.id);
-        }
         event(error, t.agent, "error");
       })
       .finally(() => {
         clearTimeout(timeout);
+        controller.abort(new OperationError("The owning Codex turn ended"));
+        db.prepare("UPDATE approvals SET status='cancelled',decided_at=CURRENT_TIMESTAMP WHERE task_id=? AND status='pending'").run(t.id);
+        db.prepare("UPDATE attention_requests SET status='cancelled',resolved_at=CURRENT_TIMESTAMP WHERE task_id=? AND status='pending'").run(t.id);
         controllers.delete(t.id);
         active.delete(t.id);
       });

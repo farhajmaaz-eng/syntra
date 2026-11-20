@@ -19,6 +19,7 @@ import { Button } from "./ui/button";
 import { CustomSelect } from "./ui/custom-select";
 import { ConfirmDialog } from "./ui/workspace-primitives";
 import { StatusChip, type Act } from "./feature-ui";
+import { leadStart } from "@/lib/roles";
 import { safeResponseJson } from "@/lib/utils";
 
 function date(value?: string) {
@@ -231,10 +232,8 @@ export default function CodexWorkspace({
           </span>
         </div>
         <p>
-          The Lead receives the starting instructions below and sets up the
-          seven subagents through delegation. Each subagent runs its own Codex
-          thread with the configured model; task sessions are linked in Tasks
-          and below.
+          Lead answers directly or assigns specialists based on the request. Each
+          assigned task runs in its own Codex thread with the configured model.
         </p>
         <div className="codex-team-grid">
           {team.map((agent: any) => (
@@ -247,7 +246,7 @@ export default function CodexWorkspace({
         </div>
         <details>
           <summary>Main starting instructions</summary>
-          <pre>{`You are the main Codex orchestrator for Syntra Studio. Before implementing anything, set up the seven subagents by delegating concrete, dependency-ordered tasks with the delegate tool: Architect, Builder, Frame, Scenic, Balance, Tester, and Codex. The main Lead runs on gpt-6.2-sol; the seven subagents run on gpt-6.1-terra. Include a final Tester task that depends on every implementation task. Do not mark the request complete until the subagents and Tester have finished.`}</pre>
+          <pre>{leadStart}</pre>
         </details>
       </section>
       <div className="codex-status-grid">

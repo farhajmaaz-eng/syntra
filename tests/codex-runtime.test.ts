@@ -1,7 +1,18 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+
+const penpot = vi.hoisted(() => ({ revision: "1".repeat(64), layers: [] as Array<{ name: string; type: string; text?: string }> }));
+vi.mock("../src/graphics/penpot", () => ({
+  inspectPenpot: async () => ({ revision: penpot.revision, layers: [...penpot.layers] }),
+  editPenpot: async (edit: { revision: string; actions: typeof penpot.layers }) => {
+    if (edit.revision !== penpot.revision) throw new Error("Design revision changed");
+    penpot.layers.push(...edit.actions);
+    penpot.revision = "2".repeat(64);
+    return { changes: edit.actions };
+  },
+}));
 
 const dir = mkdtempSync(resolve(tmpdir(), "syntra-codex-runtime-"));
 process.env.SYNTRA_DATA_DIR = dir;
@@ -49,18 +60,18 @@ afterAll(async () => {
 });
 
 describe("Codex as a first-class orchestrated agent", () => {
-  it("runs Frame's local design tools through Codex and lets Tester verify the scene", async () => {
+  it("runs Frame’s Penpot tools through Codex and lets Tester verify the scene", async () => {
     store.db.prepare("INSERT INTO runs(id,request,studio_id) VALUES ('frame-run','Create a local UI design','')").run();
     const frame = store.addTask("frame-run", "Frame", "Design an inventory",
       "FIXTURE_CALLS_B64: " + Buffer.from(JSON.stringify([
         { tool: "design_inspect", arguments: {} },
-        { tool: "design_edit", arguments: { revision: 1, actions: [
+        { tool: "design_edit", arguments: { revision: "1".repeat(64), actions: [
           { action: "create", type: "TEXT", name: "InventoryTitle", text: "Inventory" },
         ] } },
         { tool: "design_inspect", arguments: {} },
       ])).toString("base64"), []);
     const tester = store.addTask("frame-run", "Tester", "Verify editable layers",
-      'FIXTURE_CALLS: [{"tool":"design_inspect","arguments":{}},{"tool":"verify_creative","arguments":{"passed":true,"evidence":"Verified the saved inventory title and editable TEXT layer in Design Studio."}}]', [frame]);
+      'FIXTURE_CALLS: [{"tool":"design_inspect","arguments":{}},{"tool":"verify_creative","arguments":{"passed":true,"evidence":"Verified the saved inventory title and editable TEXT layer in Penpot."}}]', [frame]);
     await waitFor(() => store.task(tester).status === "completed", 15000);
     expect(store.task(frame).status).toBe("completed");
     expect(store.task(tester).result).toContain("VERIFIED:");
