@@ -48,8 +48,13 @@ jobs:
       - name: Include the bundled Node license
         shell: pwsh
         run: |
-          $version = node --version
-          Invoke-WebRequest "https://nodejs.org/dist/$version/LICENSE" -OutFile src-tauri/runtime/NODE-LICENSE.txt
+          $license = Join-Path (Split-Path (node -p process.execPath)) "LICENSE"
+          if (Test-Path $license) {
+            Copy-Item $license src-tauri/runtime/NODE-LICENSE.txt
+          } else {
+            $version = node --version
+            Invoke-WebRequest "https://raw.githubusercontent.com/nodejs/node/$version/LICENSE" -OutFile src-tauri/runtime/NODE-LICENSE.txt
+          }
       - name: Test production frontend, backend, Codex, SQLite and WASM
         run: node desktop/smoke.mjs src-tauri/runtime/app
       - name: Build the Windows installer
