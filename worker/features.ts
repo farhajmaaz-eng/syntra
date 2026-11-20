@@ -56,7 +56,9 @@ export function publicMessage(
 ) {
   db.prepare(
     "INSERT INTO agent_messages(id,task_id,actor,kind,content,status) VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET content=excluded.content,status=excluded.status,updated=CURRENT_TIMESTAMP",
-  ).run(id, taskId, actor, kind, content.slice(0, 60000), status);
+  ).run(id, taskId, actor, kind, content, status);
+  if (kind.startsWith("team_"))
+    db.prepare("UPDATE runs SET team_revision=team_revision+1 WHERE id=(SELECT run_id FROM tasks WHERE id=?)").run(taskId);
   return id;
 }
 function audit(
@@ -75,10 +77,10 @@ export function createRequest(body: unknown) {
   const a = z
     .object({
       gameId: z.string().max(200).optional().default(""),
-      objective: z.string().trim().min(1).max(20000),
+      objective: z.string().trim().min(1),
       agent: role.default("Lead"),
       priority: z.number().int().min(0).max(3).default(1),
-      acceptance: z.string().max(12000).default(""),
+      acceptance: z.string().default(""),
       dependencies: z.array(identifier).max(100).default([]),
       reviewPlan: z.boolean().default(false),
       requestKey: z.string().max(100).optional(),
@@ -126,7 +128,7 @@ export function createRequest(body: unknown) {
       g.id,
       g.studio_id,
       a.requestKey || null,
-      a.agent === "Lead" && (a.reviewPlan || !g.studio_id)
+      a.agent === "Lead" && (a.reviewPlan || (!g.studio_id && !get("lenientMode")))
         ? "pending"
         : "automatic",
     );
@@ -156,6 +158,7 @@ export function taskDetail(id: string) {
   return {
     task: summary,
     run,
+    teamDiscussion: teamDiscussion(t.run_id, 20).messages.reverse(),
     messages: db
       .prepare("SELECT * FROM agent_messages WHERE task_id=? ORDER BY rowid")
       .all(id),
@@ -176,6 +179,17 @@ export function taskDetail(id: string) {
         .all(id) as any[]
     ).map(publicAsset),
   };
+}
+
+export function teamDiscussion(runId: string, limit: number, before: number | null = null) {
+  const messages = db.prepare(`SELECT m.rowid AS cursor,m.id,m.task_id,m.actor,m.kind,m.content,m.created
+    FROM agent_messages m JOIN tasks t ON t.id=m.task_id
+    WHERE t.run_id=? AND m.kind IN ('team_message','team_question','team_reply') AND (? IS NULL OR m.rowid<?)
+    ORDER BY m.rowid DESC LIMIT ?`).all(runId, before, before, limit + 1) as {
+      cursor: number; id: string; task_id: string; actor: string; kind: string; content: string; created: string;
+    }[];
+  const next = messages.length > limit ? messages[limit - 1].cursor : null;
+  return { messages: messages.slice(0, limit), before: next };
 }
 export function decideApproval(body: unknown) {
   const a = z
@@ -271,7 +285,7 @@ export function decideRun(body: unknown) {
     .object({
       id: identifier,
       accepted: z.boolean(),
-      feedback: z.string().max(12000).default(""),
+      feedback: z.string().default(""),
       acceptIncomplete: z.boolean().default(false),
     })
     .parse(body);
@@ -667,7 +681,7 @@ export function featureAction(
 ): unknown {
   if (path === "attention/reply") {
     const a = z
-      .object({ id: identifier, reply: z.string().trim().min(1).max(12000) })
+      .object({ id: identifier, reply: z.string().trim().min(1) })
       .parse(body);
     return db.transaction(() => {
       const q: any = db
@@ -692,7 +706,7 @@ export function featureAction(
   if (path === "chat") {
     const a = z
       .object({
-        content: z.string().min(1).max(20000),
+        content: z.string().min(1),
         gameId: z.string().max(200).optional().default(""),
         reviewPlan: z.boolean().optional(),
         requestKey: z.string().optional(),
@@ -817,7 +831,7 @@ export function featureAction(
       .object({
         agent: role,
         gameId: z.string().max(200).optional().default(""),
-        content: z.string().trim().min(5).max(20000),
+        content: z.string().trim().min(5),
         taskId: z.string().optional(),
         requestKey: z.string().optional(),
       })
@@ -850,8 +864,8 @@ export function featureAction(
           .array(
             z.object({
               id: identifier,
-              instructions: z.string().trim().min(1).max(20000),
-              acceptance: z.string().max(12000).default(""),
+              instructions: z.string().trim().min(1),
+              acceptance: z.string().default(""),
             }),
           )
           .max(100)
@@ -864,7 +878,7 @@ export function featureAction(
         throw new Error("This plan is not waiting for approval");
       const pendingLead = db
         .prepare(
-          "SELECT id FROM tasks WHERE run_id=? AND agent='Lead' AND status!='completed' LIMIT 1",
+        "SELECT id FROM tasks WHERE run_id=? AND agent='Lead' AND consultation_for IS NULL AND status!='completed' LIMIT 1",
         )
         .get(r.id);
       if (pendingLead) throw new Error("Wait for Lead to finish the plan");
@@ -875,7 +889,7 @@ export function featureAction(
         );
       for (const change of a.adjustments) {
         const t = task(change.id);
-        if (!t || t.run_id !== r.id || t.steps || t.status !== "queued")
+        if (!t || t.run_id !== r.id || t.consultation_for || t.steps || t.status !== "queued")
           throw new Error(
             "Only unstarted tasks from this plan can be adjusted",
           );
@@ -1023,9 +1037,9 @@ export function featureAction(
       const run = db.prepare("SELECT * FROM runs WHERE id=?").get(id) as any;
       if (run?.status !== "review" || !["failed", "incomplete"].includes(run.verification_status))
         throw new Error("This run does not have unresolved verification.");
-      const deps = (db.prepare("SELECT id FROM tasks WHERE run_id=?").all(id) as { id: string }[]).map(row => row.id)
-        .filter(taskId => task(taskId)?.status === "completed" && task(taskId)?.agent !== "Tester");
-      db.prepare("UPDATE tasks SET verification_superseded=1 WHERE run_id=? AND agent='Tester'").run(id);
+      const deps = (db.prepare(`SELECT id FROM tasks WHERE run_id=? AND status='completed'
+        AND agent!='Tester' AND consultation_for IS NULL`).all(id) as { id: string }[]).map(row => row.id);
+      db.prepare("UPDATE tasks SET verification_superseded=1 WHERE run_id=? AND agent='Tester' AND consultation_for IS NULL").run(id);
       const taskId = addTask(id, "Tester", "Retry verification", "Verify the existing implementation. Report failed checks or explain what still cannot run.", deps);
       db.prepare("UPDATE runs SET status='active',verification_status='pending' WHERE id=?").run(id);
       audit("run", id, "verification_retry", "", taskId);

@@ -16,6 +16,13 @@ export function approvalRisk(approval: Approval) {
   if (approval.provider === "codex" && /^(codex\/command|codex\/permissions)$/.test(approval.tool))
     return approval.tool === "codex/command" ? "command execution" : "expanded permissions";
   const args = approvalArgs(approval.args);
+  if (approval.tool === "codex/fileChange") {
+    if (args.grantRoot) return "expanded permissions";
+    if (Array.isArray(args.files) && args.files.some((file) => {
+      const kind = approvalArgs(approvalArgs(file).kind);
+      return kind.type === "delete" || kind.move_path || kind.movePath;
+    })) return "destructive operation";
+  }
   if ((approval.tool === "design_edit" && Array.isArray(args.actions) &&
        args.actions.some((action) => approvalArgs(action).action === "delete")) ||
       (approval.tool === "illustrate_mesh" && args.tool === "delete_node"))
@@ -36,7 +43,9 @@ export function describeApproval(approval: Approval) {
   const args = approvalArgs(approval.args);
   const risk = approvalRisk(approval);
   const string = (...values: unknown[]) => values.find((value): value is string => typeof value === "string" && !!value);
-  const resource = string(args.path, args.file_path, args.target_path, args.assetId, args.asset_id, args.projectId, args.cwd, args.studio_id);
+  const files = Array.isArray(args.files) ? args.files : [];
+  const resource = string(args.path, args.file_path, args.target_path, args.assetId, args.asset_id, args.projectId, args.grantRoot,
+    files.length === 1 ? approvalArgs(files[0]).path : files.length ? `${files.length} project files` : undefined, args.cwd, args.studio_id);
   const action = {
     "multi_edit": "Edit a Roblox script",
     "insert_asset": "Insert a Roblox asset",

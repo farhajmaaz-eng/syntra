@@ -68,7 +68,6 @@ export default function HumanAttention({
                 name="reply"
                 required
                 rows={2}
-                maxLength={12000}
                 placeholder="Your answer or decision…"
               />
               <div className="actions">

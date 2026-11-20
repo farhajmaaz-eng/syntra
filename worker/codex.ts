@@ -5,10 +5,11 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
+  lstatSync,
   realpathSync,
   statSync,
 } from "node:fs";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import { db, dataDir, get, set, event, task } from "./store";
 import { OperationError, redact } from "./errors";
@@ -43,6 +44,7 @@ type ActiveTurn = {
   text: string;
   messages: Map<string, string>;
   fileDiffs: Map<string, string>;
+  proposedFileChanges: Map<string, any[]>;
   diff: string;
   usage: any;
   error: string;
@@ -114,9 +116,9 @@ function sandboxMode() {
   return value === "read-only" ? "read-only" : "workspace-write";
 }
 
-function sandboxPolicy(cwd: string) {
-  return sandboxMode() === "read-only"
-    ? { type: "readOnly", networkAccess: Boolean(get("codexNetworkAccess")) }
+function sandboxPolicy(cwd: string, advisory: boolean) {
+  return advisory || sandboxMode() === "read-only"
+    ? { type: "readOnly", networkAccess: !advisory && Boolean(get("codexNetworkAccess")) }
     : {
         type: "workspaceWrite",
         writableRoots: [cwd],
@@ -630,6 +632,8 @@ class CodexManager {
       try {
         if (["design_edit", "illustrate_mesh"].includes(params.tool) &&
             approvalRisk({ provider: "codex", tool: params.tool, args: params.arguments })) {
+          if (active.taskId && task(active.taskId)?.consultation_for)
+            throw new OperationError("Agent consultations are read-only.");
           const role = active.taskId ? task(active.taskId)?.agent : "Codex";
           if (params.tool === "design_edit" ? !["Frame", "Codex"].includes(role) : !["Scenic", "Codex"].includes(role))
             throw new OperationError(`${role} cannot delete content with this tool.`);
@@ -713,7 +717,14 @@ class CodexManager {
           : method === "item/permissions/requestApproval"
             ? "permissions"
             : "question";
+    if (active.taskId && task(active.taskId)?.consultation_for) {
+      reply({ id: message.id, error: { code: -32602, message: "Agent consultations are read-only." } });
+      return;
+    }
     if (this.approvals.has(String(message.id))) return;
+    const changes = kind === "fileChange"
+      ? active.proposedFileChanges.get(params.itemId) || params.changes
+      : null;
     const args = {
       kind,
       method,
@@ -723,6 +734,8 @@ class CodexManager {
       reason: params.reason || null,
       questions: params.questions || null,
       requested: params.permissions || null,
+      grantRoot: params.grantRoot || null,
+      files: Array.isArray(changes) ? changes.map((change) => ({ path: change?.path, kind: change?.kind })) : null,
       turnId,
       sessionId: sessionRow.id,
       startedAtMs: params.startedAtMs || Date.now(),
@@ -733,28 +746,35 @@ class CodexManager {
     );
     recordEvent(sessionRow.id, turnId, method, params);
     const ordinaryFileChange = kind === "fileChange" && sandboxMode() === "workspace-write" &&
-      !params.grantRoot && Array.isArray(params.changes) && params.changes.length > 0 &&
-      params.changes.every((change: any) => {
-        if (!["add", "update"].includes(change.kind?.type) || typeof change.path !== "string" || !change.path) return false;
+      !params.grantRoot && Array.isArray(changes) && changes.length > 0 &&
+      changes.every((change: any) => {
+        if (!["add", "update"].includes(change?.kind?.type) || change.kind.move_path || change.kind.movePath ||
+            typeof change.path !== "string" || !change.path) return false;
         try {
-          validateCodexCwd(dirname(resolve(sessionRow.cwd, change.path)));
-          return true;
+          const path = resolve(sessionRow.cwd, change.path);
+          const parent = validateCodexCwd(dirname(path));
+          const fromSession = relative(sessionRow.cwd, parent);
+          const protectedPath = [...fromSession.split(sep), basename(path)].some((part) =>
+            [".git", ".agents", ".codex"].includes(part.toLowerCase()));
+          return fromSession !== ".." && !fromSession.startsWith(`..${sep}`) && !isAbsolute(fromSession) &&
+            !protectedPath && (lstatSync(path, { throwIfNoEntry: false })?.isFile() ?? change.kind.type === "add");
         } catch {
           return false;
         }
       });
-    if (get("codexAutoApprove") && ordinaryFileChange)
+    if ((get("lenientMode") || get("codexAutoApprove")) && ordinaryFileChange)
       this.resolveApproval(
         approvalId,
         true,
         "Auto-approved by workspace policy",
+        "Syntra",
       );
     response.then((decision) => {
       if (decision && !active.settled) reply({ id: message.id, result: decision });
     });
   }
 
-  resolveApproval(approvalId: string, approved: boolean, note = "") {
+  resolveApproval(approvalId: string, approved: boolean, note = "", reviewer: "User" | "Syntra" = "User") {
     const row: any = db
       .prepare("SELECT * FROM approvals WHERE id=? AND provider='codex'")
       .get(approvalId);
@@ -785,24 +805,25 @@ class CodexManager {
       decision = { decision: approved ? "accept" : "decline" };
     }
     db.prepare(
-      "UPDATE approvals SET status=?,note=?,reviewer='User',decided_at=CURRENT_TIMESTAMP WHERE id=?",
-    ).run(approved ? "approved" : "rejected", note, approvalId);
+      "UPDATE approvals SET status=?,note=?,reviewer=?,decided_at=CURRENT_TIMESTAMP WHERE id=?",
+    ).run(approved ? "approved" : "rejected", note, reviewer, approvalId);
     clearTimeout(pending.timer);
     this.approvals.delete(String(pending.rpcId));
     if (active.taskId) this.syncApprovalState(active.taskId);
     pending.resolve(decision);
     db.prepare(
-      "INSERT INTO review_events(id,target_kind,target_id,verdict,note,reviewer) VALUES (?,?,?,?,?, 'User')",
+      "INSERT INTO review_events(id,target_kind,target_id,verdict,note,reviewer) VALUES (?,?,?,?,?,?)",
     ).run(
       randomUUID(),
       "codex_approval",
       approvalId,
       approved ? "approved" : "rejected",
       note,
+      reviewer,
     );
     event(
       approved ? "Codex operation approved" : "Codex operation rejected",
-      "User",
+      reviewer,
     );
     return true;
   }
@@ -869,6 +890,13 @@ class CodexManager {
       recordEvent(sessionId, turnId || active?.turnId || null, method, params);
 
     if (method === "thread/status/changed") return;
+    if (active && method === "item/started" && params.item?.type === "fileChange" &&
+        typeof params.item.id === "string" && Array.isArray(params.item.changes)) {
+      active.proposedFileChanges.set(params.item.id, params.item.changes);
+    }
+    if (active && method === "item/fileChange/patchUpdated" && typeof params.itemId === "string" && Array.isArray(params.changes)) {
+      active.proposedFileChanges.set(params.itemId, params.changes);
+    }
     if (method === "item/agentMessage/delta" && active) {
       const itemId = String(params.itemId || "unidentified");
       active.messages.set(itemId, ((active.messages.get(itemId) || "") + (params.delta || "")).slice(0, 120000));
@@ -887,6 +915,7 @@ class CodexManager {
     }
     if (method === "item/completed" && active) {
       const item = params.item || {};
+      if (item.type === "fileChange") active.proposedFileChanges.delete(item.id);
       this.mergeCompletedItems(active, [item]);
       if (item.type === "agentMessage") active.onText?.(active.text);
       this.persistStreaming(active, true);
@@ -1059,16 +1088,17 @@ class CodexManager {
     cwd: string,
     model?: string,
     dynamicTools?: CodexDynamicTool[],
+    advisory = false,
   ) {
     return {
       cwd,
       model: model || undefined,
       ...(dynamicTools?.length ? { dynamicTools } : {}),
-      approvalPolicy: "on-request",
+      approvalPolicy: advisory ? "never" : "on-request",
       approvalsReviewer: "user",
-      sandbox: sandboxMode(),
+      sandbox: advisory ? "read-only" : sandboxMode(),
       developerInstructions:
-        "You are Codex operating inside Syntra Studio. Work only in the selected local project, follow AGENTS.md, inspect before editing, run relevant checks, and report exact changed paths and test evidence. All file and command operations are reviewed by a human.",
+        "You are Codex operating inside Syntra Studio. Work only in the selected local project, follow AGENTS.md, inspect before editing, run relevant checks, and report exact changed paths and test evidence. Follow the configured workspace approval policy.",
       sessionStartSource: "startup",
       threadSource: "user",
     };
@@ -1080,12 +1110,13 @@ class CodexManager {
     model?: string;
     taskId?: string;
     dynamicTools?: CodexDynamicTool[];
+    advisory?: boolean;
   }) {
     await this.ensureStarted();
     const cwd = validateCodexCwd(input.cwd || get<string>("codexProjectRoot"));
     const result = await this.request(
       "thread/start",
-      await this.threadParams(cwd, input.model, input.dynamicTools),
+      await this.threadParams(cwd, input.model, input.dynamicTools, input.advisory),
       30000,
     );
     const thread = result?.thread || {};
@@ -1105,7 +1136,7 @@ class CodexManager {
     return session(id);
   }
 
-  private async resume(sessionRow: any) {
+  private async resume(sessionRow: any, advisory: boolean) {
     if (this.loaded.has(sessionRow.thread_id)) return;
     try {
       const result = await this.request(
@@ -1114,9 +1145,9 @@ class CodexManager {
           threadId: sessionRow.thread_id,
           cwd: sessionRow.cwd,
           model: sessionRow.model || undefined,
-          approvalPolicy: "on-request",
+          approvalPolicy: advisory ? "never" : "on-request",
           approvalsReviewer: "user",
-          sandbox: sandboxMode(),
+          sandbox: advisory ? "read-only" : sandboxMode(),
           excludeTurns: true,
         },
         30000,
@@ -1167,6 +1198,7 @@ class CodexManager {
       if (this.activeByThread.has(sessionRow.thread_id)) throw new OperationError("This Codex session already has an active turn.");
     }
     const cwd = validateCodexCwd(sessionRow.cwd);
+    const advisory = Boolean(sessionRow.task_id && task(sessionRow.task_id)?.consultation_for);
     let notifyFinished!: () => void;
     const finished = new Promise<void>(resolve => { notifyFinished = resolve; });
     const active: ActiveTurn = {
@@ -1177,6 +1209,7 @@ class CodexManager {
       text: "",
       messages: new Map(),
       fileDiffs: new Map(),
+      proposedFileChanges: new Map(),
       diff: "",
       usage: null,
       error: "",
@@ -1184,7 +1217,7 @@ class CodexManager {
       resolve: () => {},
       reject: () => {},
       settled: false,
-      prompt: input.prompt.slice(0, 120000),
+      prompt: input.prompt,
       finished, notifyFinished, earlyEvents: [],
       lastPersisted: 0,
       onText: input.onText,
@@ -1205,7 +1238,7 @@ class CodexManager {
       "UPDATE codex_sessions SET status='running',updated=CURRENT_TIMESTAMP WHERE id=?",
     ).run(active.sessionId);
     try {
-      await this.resume(sessionRow);
+      await this.resume(sessionRow, advisory);
       if (active.settled) return done;
       input.signal?.throwIfAborted();
       if (active.stopRequested) throw new OperationError("Codex turn interrupted before submission");
@@ -1214,12 +1247,12 @@ class CodexManager {
         "turn/start",
         {
           threadId: active.threadId,
-          input: [{ type: "text", text: input.prompt.slice(0, 120000) }],
+          input: [{ type: "text", text: input.prompt }],
           cwd,
           model: sessionRow.model || modelFor() || undefined,
-          approvalPolicy: "on-request",
+          approvalPolicy: advisory ? "never" : "on-request",
           approvalsReviewer: "user",
-          sandboxPolicy: sandboxPolicy(cwd),
+          sandboxPolicy: sandboxPolicy(cwd, advisory),
         },
         30000,
       );

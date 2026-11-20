@@ -38,7 +38,7 @@ export function PlanReview({
   act: Act;
   busy: boolean;
 }) {
-  const tasks = data.tasks.filter((t: any) => t.run_id === run.id);
+  const tasks = data.tasks.filter((t: any) => t.run_id === run.id && !t.consultation_for);
   const planned = tasks.filter((t: any) => t.agent !== "Lead");
   const waiting = run.plan_status === "pending";
   const ready =
@@ -481,7 +481,6 @@ export default function AgentWorkspace({
                     name="content"
                     required
                     minLength={5}
-                    maxLength={20000}
                     rows={3}
                     placeholder="Give this agent a concrete follow-up objective…"
                   />

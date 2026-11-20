@@ -421,7 +421,6 @@ export default function Studio({
         name="content"
         aria-label="Request to Lead"
         required
-        maxLength={20000}
         placeholder="Describe your game, a new feature, or something to fix…"
       />
       <label className="checkbox v2-plan-toggle">
@@ -820,6 +819,7 @@ function SettingsForm({
             paused: s.paused,
             approvalRequired: f.get("approvalRequired") === "on",
             studioReadApproval: f.get("studioReadApproval") === "on",
+            ...(data.standaloneMode ? {} : { lenientMode: f.get("lenientMode") === "on" }),
             mcpCommand: f.get("command"),
             mcpArgs: args,
           });
@@ -884,6 +884,11 @@ function SettingsForm({
         <h3>
           <Gauge size={18} /> Runtime
         </h3>
+        <label className="checkbox">
+          <input type="checkbox" name="lenientMode" defaultChecked={!!s.lenientMode} disabled={data.standaloneMode} />
+          Lenient mode
+        </label>
+        <p>Run routine Studio edits and playtests without asking. Publishing, paid actions, deletion, arbitrary Luau, and extra access still require approval.</p>
         <div className="form-grid">
           <label>
             Concurrent agents (1–{Object.keys(roles).length})

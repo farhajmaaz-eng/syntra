@@ -127,9 +127,10 @@ export function TaskInspector({
   act: Act;
   busy: boolean;
 }) {
+  const teamRevision = data.runs.find((run: any) => run.id === task.run_id)?.team_revision || 0;
   const info = useResource(
     `tasks/detail?id=${encodeURIComponent(task.id)}`,
-    `${task.updated}:${task.status}:${task.steps}:${task.stop_requested}:${data.settings.featureRevision || 0}`,
+    `${task.updated}:${task.status}:${task.steps}:${task.stop_requested}:${data.settings.featureRevision || 0}:${teamRevision}`,
   );
   return (
     <div className="task-body v2-inspector">
@@ -233,6 +234,12 @@ export function TaskInspector({
       <ResourceState loading={info.loading} error={info.error} variant="detail">
         {info.data && (
           <>
+            {!!info.data.teamDiscussion?.length && (
+              <details open>
+                <summary>Team discussion</summary>
+                <PublicMessages messages={info.data.teamDiscussion} />
+              </details>
+            )}
             {!!info.data.timeline?.length && (
               <details>
                 <summary>Execution timeline</summary>
@@ -298,7 +305,7 @@ export function PublicMessages({ messages }: { messages: any[] }) {
           className={`v2-public-message ${m.actor === "User" ? "from-user" : ""}`}
         >
           <small>
-            {m.actor} · {m.kind} · {displayDate(m.created)}{" "}
+            {m.actor} · {m.kind.replaceAll("_", " ")} · {displayDate(m.created)}{" "}
             {m.status === "streaming"
               ? "· streaming"
               : m.status === "interrupted"
@@ -392,7 +399,6 @@ export function NewTaskDialog({
             name="objective"
             required
             minLength={5}
-            maxLength={20000}
             rows={4}
             defaultValue={initial}
             placeholder="What should change, and why?"
@@ -456,7 +462,7 @@ export function NewTaskDialog({
         </label>
         {agent === "Lead" && (
           <label className="checkbox">
-            <input type="checkbox" name="reviewPlan" defaultChecked />
+            <input type="checkbox" name="reviewPlan" defaultChecked={!data.settings.lenientMode} />
             Review the plan before specialists start
           </label>
         )}

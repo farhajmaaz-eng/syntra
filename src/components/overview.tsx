@@ -102,7 +102,6 @@ export default function Overview({
               name="content"
               aria-label="Request to Lead"
               required
-              maxLength={20000}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="Describe the change and how it should be verified."

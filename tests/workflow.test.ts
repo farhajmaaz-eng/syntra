@@ -203,6 +203,42 @@ describe("Persistent Codex workflow", () => {
     store.db.prepare("UPDATE runs SET status='review' WHERE id=?").run(runId);
   }, 15000);
 
+  it("runs routine Studio edits in Lenient mode but holds arbitrary Luau for approval", async () => {
+    store.set("lenientMode", true);
+    store.set("studioReadApproval", true);
+    const runId = "lenient-studio";
+    try {
+      store.db.prepare("INSERT INTO runs(id,request,studio_id) VALUES (?,?,?)").run(runId, "Test lenient edits", "test-studio");
+      const id = store.addTask(runId, "Builder", "Routine change", calls([
+        { tool: "script_read", arguments: {} },
+        { tool: "multi_edit", arguments: { source: "-- Lenient mode change" } },
+        { tool: "execute_luau", arguments: { code: "return 'requires approval'" } },
+        { tool: "script_read", arguments: {} },
+      ]));
+      const graphicsBefore = readFileSync(process.env.FIXTURE_PLACE! + ".graphics", "utf8");
+      await runtime.tick();
+      const deadline = Date.now() + 8000;
+      const readApproval = () => store.db.prepare("SELECT id,tool FROM approvals WHERE task_id=? AND status='pending'").get(id) as { id: string; tool: string } | undefined;
+      let approval = readApproval();
+      while (!approval && Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 20));
+        approval = readApproval();
+      }
+      expect(approval?.tool).toBe("execute_luau");
+      expect(readFileSync(process.env.FIXTURE_PLACE!, "utf8")).toBe("-- Lenient mode change");
+      expect(() => features.decideApproval({ id: approval!.id, approved: true })).toThrow("Explicit authorization");
+      features.decideApproval({ id: approval!.id, approved: false });
+      while (runtime.active.has(id) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
+      expect(store.task(id).status).toBe("completed");
+      expect(readFileSync(process.env.FIXTURE_PLACE! + ".graphics", "utf8")).toBe(graphicsBefore);
+      expect(store.db.prepare("SELECT count(*) AS n FROM approvals WHERE task_id=?").get(id)).toEqual({ n: 1 });
+    } finally {
+      store.db.prepare("UPDATE runs SET status='review' WHERE id=?").run(runId);
+      store.set("lenientMode", false);
+      store.set("studioReadApproval", false);
+    }
+  }, 12000);
+
   it("restores queued work and flags interrupted writes after restart", () => {
     const id = store.addTask(
       "run",

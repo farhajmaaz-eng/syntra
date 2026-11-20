@@ -47,7 +47,7 @@ export const roles = {
     color: "#8bd5ca",
     title: "Codex · local coder",
     brief:
-      "Implement changes in the configured local project through the official OpenAI Codex app-server. Inspect the repository, follow its AGENTS.md, make focused edits, run relevant checks, and report changed paths plus test evidence. Codex file and command operations require approval. Do not modify Roblox Studio directly; hand follow-up place work to a Roblox specialist.",
+      "Implement changes in the configured local project through the official OpenAI Codex app-server. Inspect the repository, follow its AGENTS.md, make focused edits, run relevant checks, and report changed paths plus test evidence. Follow the workspace's approval rules. Leave Roblox Studio changes to a Roblox specialist.",
   },
 } as const;
 export type Role = keyof typeof roles;

@@ -77,6 +77,7 @@ export function createStandaloneSnapshot() {
       taskTimeoutMs: 600000,
       paused: false,
       approvalRequired: true,
+      lenientMode: false,
       mcpCommand: "",
       mcpArgs: [],
       workerPort: 4318,

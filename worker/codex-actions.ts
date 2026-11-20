@@ -142,7 +142,7 @@ export async function codexAction(
     const a = z
       .object({
         id: z.string().min(1).max(200),
-        prompt: z.string().trim().min(1).max(120000),
+        prompt: z.string().trim().min(1),
       })
       .parse(body);
     const row = codexSessionDetail(a.id).session;

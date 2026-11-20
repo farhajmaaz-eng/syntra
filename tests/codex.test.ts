@@ -279,3 +279,38 @@ it("persists a terminal start reply even when there is no completion notificatio
   expect(result.diff).toContain("src/recovered.ts");
   expect(codexModule.codexSessionDetail(session.id).turns).toContainEqual(expect.objectContaining({ status: "completed" }));
 });
+
+it("sends and stores a prompt past both former size cutoffs", async () => {
+  const created = await codexAction("codex/session/create", { title: "Long task", cwd: project }, new Set());
+  const id = created?.session?.id;
+  if (!id) throw new Error("Fixture session was not created");
+  const prompt = `FIXTURE_LONG_PROMPT ${"context ".repeat(22500)} FIXTURE_LONG_PROMPT_END`;
+  await codexAction("codex/session/turn", { id, prompt }, new Set());
+  const completed = await waitFor(() => db.prepare("SELECT prompt,result FROM codex_turns WHERE session_id=? AND status='completed'").get(id) as { prompt: string; result: string } | undefined);
+  expect(completed.prompt).toEqual(prompt);
+  expect(completed.result).toContain("Received the full prompt.");
+});
+
+it("auto-approves an in-project addition in Lenient mode and still requires consent for deletion", async () => {
+  store.set("lenientMode", true);
+  try {
+    const session = await codex.createSession({ title: "Lenient file permissions", cwd: project });
+    const added = await codex.runSessionTurn({ sessionId: session.id, prompt: "FIXTURE_PROJECT_ADD" });
+    expect(added.text).toContain("add approved");
+    expect(db.prepare("SELECT status,reviewer FROM approvals WHERE session_id=?").get(session.id)).toEqual({ status: "approved", reviewer: "Syntra" });
+
+    const deleting = codex.runSessionTurn({ sessionId: session.id, prompt: "FIXTURE_PROJECT_DELETE" });
+    const approval = await waitFor(() => db.prepare("SELECT id FROM approvals WHERE session_id=? AND status='pending'").get(session.id) as { id: string } | undefined);
+    expect(() => features.decideApproval({ id: approval.id, approved: true })).toThrow("Explicit authorization");
+    features.decideApproval({ id: approval.id, approved: false });
+    expect((await deleting).text).toContain("delete declined");
+
+    mkdirSync(resolve(project, ".git"));
+    const protectedWrite = codex.runSessionTurn({ sessionId: session.id, prompt: "FIXTURE_PROJECT_PROTECTED" });
+    const protectedApproval = await waitFor(() => db.prepare("SELECT id FROM approvals WHERE session_id=? AND status='pending'").get(session.id) as { id: string } | undefined);
+    features.decideApproval({ id: protectedApproval.id, approved: false });
+    expect((await protectedWrite).text).toContain("add declined");
+  } finally {
+    store.set("lenientMode", false);
+  }
+});

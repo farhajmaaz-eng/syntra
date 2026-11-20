@@ -2,11 +2,35 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { workspaceDataDirectory } from "@/lib/workspace-paths";
+import { actionBodyLimit } from "@/lib/action-body-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function proxyExternal(req: NextRequest, path: string[]) {
+async function readActionBody(req: NextRequest, path: string) {
+  if (!req.body) return "";
+  const limit = actionBodyLimit(path);
+  const reader = req.body.getReader();
+  const decoder = new TextDecoder();
+  let raw = "";
+  let bytes = 0;
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) return raw + decoder.decode();
+      bytes += value.byteLength;
+      if (bytes > limit) {
+        await reader.cancel();
+        throw new Error(`Request body exceeds ${limit.toLocaleString()} bytes.`);
+      }
+      raw += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+async function proxyExternal(req: NextRequest, path: string[], raw: string) {
   const secret = await readFile(
     resolve(workspaceDataDirectory(), "worker.secret"),
     "utf8",
@@ -19,7 +43,7 @@ async function proxyExternal(req: NextRequest, path: string[]) {
         Authorization: `Bearer ${secret}`,
         "Content-Type": "application/json",
       },
-      body: req.method === "POST" ? await req.text() : undefined,
+      body: req.method === "POST" ? raw : undefined,
       cache: "no-store",
       signal: AbortSignal.timeout(path[0] === "health" ? 2000 : 330000),
     },
@@ -42,6 +66,7 @@ async function handle(
   const { path } = await params;
   const joinedPath = path.join("/");
   const externalMode = process.env.WORKER_EXTERNAL === "1";
+  let raw = "";
 
   if (req.method === "POST") {
     const origin = req.headers.get("origin");
@@ -50,6 +75,11 @@ async function handle(
     if ((origin && originHost !== req.headers.get("host")) ||
         (fetchSite && fetchSite !== "same-origin" && fetchSite !== "none")) {
       return NextResponse.json({ error: "Open the Syntra workspace to change its state." }, { status: 403 });
+    }
+    try {
+      raw = await readActionBody(req, joinedPath);
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : "Could not read the request body." }, { status: 413 });
     }
   }
 
@@ -68,7 +98,7 @@ async function handle(
 
   if (externalMode) {
     try {
-      return await proxyExternal(req, path);
+      return await proxyExternal(req, path, raw);
     } catch {
       return NextResponse.json(
         {
@@ -118,16 +148,6 @@ async function handle(
       );
     }
 
-    const raw = await req.text();
-    const limit =
-      joinedPath === "assets/save"
-        ? 3000000
-        : ["market/import", "telemetry/import"].includes(joinedPath)
-          ? 1000000
-          : 128000;
-    if (raw.length > limit) {
-      throw new Error("Request too large");
-    }
     let body: unknown = {};
     if (raw.trim()) {
       try {

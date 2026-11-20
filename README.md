@@ -39,6 +39,14 @@ See [Studio connection recovery](docs/STUDIO_CONNECTION_RECOVERY.md) for connect
 - **Tasks and Review** show dependencies, status, approval requests, and evidence. Review interrupted operations against the actual project or place before retrying.
 - **Library** includes searchable Roblox Creator Documentation and Syntra playbooks. Add project references or build a brief for an agent. See the [library guide](library/README.md).
 
+### Work autonomously with the team
+
+Enable **Lenient mode** in **Settings → Runtime** and save. Routine Studio reads, script edits, asset inserts, and playtest controls proceed automatically in the selected project. Codex can approve verified in-project file additions and edits within the configured workspace. Publishing, paid operations, destructive tool requests, arbitrary Studio Luau, and access outside the sandbox still ask for a decision. You can still request plan review when submitting a task.
+
+Agents can share findings and ask a specialist for advice before settling a decision. Syntra saves the discussion and resumes the requesting task after the specialist replies. Open **Tasks → Team discussion** on any task in the run to follow the exchange.
+
+Syntra sends the full prompt to Codex. The selected model’s context window still applies, and the HTTP API accepts up to 8 MiB for a prompt request.
+
 ## Research Roblox games
 
 Open **Game Intelligence** from the sidebar to browse Trending, Top CCU, Rising, Most Visited, Most Favorited and Up-and-Coming. Search for an experience or tracked creator, filter by genre or concurrent players, and open an experience to inspect its source links and history. Ranked counts cover the tracked catalog. Rising uses a reported 24-hour CCU change or Syntra observations taken about a day apart.

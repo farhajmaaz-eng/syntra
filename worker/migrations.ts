@@ -18,6 +18,8 @@ export function migrateFeatures(db: Database.Database) {
         stop_requested: "TEXT",
         requester: "TEXT NOT NULL DEFAULT 'Lead'",
         execution_turn_id: "TEXT",
+        consultation_for: "TEXT REFERENCES tasks(id)",
+        consultation_pending: "INTEGER NOT NULL DEFAULT 0",
         verification_status: "TEXT NOT NULL DEFAULT 'pending'",
         verification_note: "TEXT NOT NULL DEFAULT ''",
         verification_superseded: "INTEGER NOT NULL DEFAULT 0",
@@ -26,6 +28,7 @@ export function migrateFeatures(db: Database.Database) {
         studio_pin_revision: "INTEGER NOT NULL DEFAULT 0",
         request_key: "TEXT",
         plan_status: "TEXT NOT NULL DEFAULT 'automatic'",
+        team_revision: "INTEGER NOT NULL DEFAULT 0",
         verification_status: "TEXT NOT NULL DEFAULT 'pending'",
       },
       agents: {
@@ -82,6 +85,7 @@ export function migrateFeatures(db: Database.Database) {
       CREATE INDEX IF NOT EXISTS codex_turns_session ON codex_turns(session_id,created);
       CREATE INDEX IF NOT EXISTS codex_events_session ON codex_events(session_id,id);
       CREATE INDEX IF NOT EXISTS agent_messages_task ON agent_messages(task_id,created);
+      CREATE INDEX IF NOT EXISTS tasks_consultations ON tasks(consultation_for) WHERE consultation_for IS NOT NULL;
       CREATE INDEX IF NOT EXISTS reviews_target ON review_events(target_kind,target_id);
       CREATE INDEX IF NOT EXISTS telemetry_game ON telemetry_snapshots(game_id,fetched_at);
     `);

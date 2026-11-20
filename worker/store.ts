@@ -46,6 +46,7 @@ export const defaults: Record<string, unknown> = {
   maxTasksPerRun: 50,
   paused: false,
   approvalRequired: true,
+  lenientMode: false,
   mcpCommand: process.env.ROBLOX_MCP_COMMAND || "",
   mcpArgs: JSON.parse(process.env.ROBLOX_MCP_ARGS || "[]"),
   workerHeartbeat: 0,
@@ -141,6 +142,7 @@ export function addTask(
   title: string,
   instructions: string,
   deps: string[] = [],
+  consultationFor: string | null = null,
 ) {
   if (!Object.hasOwn(roles, agent))
     throw new OperationError("Unknown task agent");
@@ -168,20 +170,20 @@ export function addTask(
   const limit = Math.max(2, get<number>("maxTasksPerRun") || 50);
   const pendingTester = db
     .prepare(
-      "SELECT id FROM tasks WHERE run_id=? AND agent='Tester' AND status NOT IN ('completed','cancelled','failed') LIMIT 1",
+      "SELECT id FROM tasks WHERE run_id=? AND agent='Tester' AND consultation_for IS NULL AND status NOT IN ('completed','cancelled','failed') LIMIT 1",
     )
     .get(run_id);
   if (
     count.n >= limit ||
-    (agent !== "Tester" && !pendingTester && count.n >= limit - 1)
+    ((agent !== "Tester" || consultationFor) && !pendingTester && count.n >= limit - 1)
   )
     throw new OperationError(
       "Run task limit reached; review the delegation plan",
     );
   const id = randomUUID();
   db.prepare(
-    "INSERT INTO tasks(id,run_id,agent,title,instructions,deps) VALUES (?,?,?,?,?,?)",
-  ).run(id, run_id, agent, title, instructions, JSON.stringify(deps));
+    "INSERT INTO tasks(id,run_id,agent,title,instructions,deps,consultation_for) VALUES (?,?,?,?,?,?,?)",
+  ).run(id, run_id, agent, title, instructions, JSON.stringify(deps), consultationFor);
   event(`Queued: ${title}`, agent);
   return id;
 }
@@ -246,7 +248,7 @@ export function snapshot() {
     agents: db.prepare("SELECT * FROM agents").all(),
     tasks: db
       .prepare(
-        "SELECT id,run_id,agent,title,instructions,status,deps,result,attempts,steps,next_at,error,created,updated,priority,acceptance,parent_task_id,stop_requested,requester,verification_status,verification_note FROM tasks ORDER BY created DESC",
+        "SELECT id,run_id,agent,title,instructions,status,deps,result,attempts,steps,next_at,error,created,updated,priority,acceptance,parent_task_id,stop_requested,requester,verification_status,verification_note,consultation_for FROM tasks ORDER BY created DESC",
       )
       .all(),
     runs: db.prepare("SELECT * FROM runs ORDER BY created DESC").all(),

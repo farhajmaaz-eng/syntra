@@ -115,6 +115,24 @@ async function runTurn(threadId, turnId, prompt) {
     return;
   }
   const outputs = [];
+  if (prompt.includes("FIXTURE_LONG_PROMPT")) {
+    if (!prompt.includes("FIXTURE_LONG_PROMPT_END")) {
+      finishTurn(turnId, "failed", "The prompt tail was truncated");
+      return;
+    }
+    outputs.push("Received the full prompt.");
+  }
+  if (/FIXTURE_PROJECT_(ADD|DELETE|PROTECTED)/.test(prompt)) {
+    const kind = prompt.includes("FIXTURE_PROJECT_DELETE") ? "delete" : "add";
+    const path = prompt.includes("FIXTURE_PROJECT_PROTECTED") ? ".git/config" : "example.ts";
+    const itemId = `file-approval-${kind}`;
+    note("item/started", { threadId, turnId, item: {
+      id: itemId, type: "fileChange", status: "inProgress",
+      changes: [{ path, kind: { type: kind }, diff: "+fixture" }],
+    } });
+    const decision = await serverRequest("item/fileChange/requestApproval", { threadId, turnId, itemId });
+    outputs.push(`${kind} ${decision?.decision === "accept" ? "approved" : "declined"}`);
+  }
   if (/FIXTURE_APPROVAL/.test(prompt)) {
     const decision = await serverRequest(
       "item/commandExecution/requestApproval",

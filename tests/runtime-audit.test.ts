@@ -584,3 +584,45 @@ it("makes completed implementation reviewable when Tester is disabled", async ()
     store.db.prepare("UPDATE agents SET enabled=1 WHERE name='Tester'").run();
   }
 });
+
+it("lets Lead consult Tester, resume and read the reply while using one scheduler slot", async () => {
+  store.set("concurrency", 1);
+  const question = calls([
+    { tool: "multi_edit", arguments: { source: "should never run" } },
+    { tool: "send_team_message", arguments: { message: "Lead, keep the checkpoint authoritative on the server." } },
+  ]);
+  const consultation = { tool: "consult_agent", arguments: { agent: "Tester", question } };
+  const leadId = run("Lead", calls([consultation, consultation, { tool: "team_messages", arguments: {} }]));
+  const { run_id: runId } = store.task(leadId);
+  store.db.prepare("UPDATE runs SET plan_status='pending' WHERE id=?").run(runId);
+  const otherId = run("Builder");
+  const otherRun = store.task(otherId).run_id;
+  store.db.prepare("UPDATE runs SET status='paused' WHERE id=?").run(otherRun);
+  const { publicMessage, taskDetail } = await import("../worker/features");
+  publicMessage(otherId, "Builder", "team_message", "Other project’s private notes");
+
+  await runtime.tick();
+  await idle();
+  expect(store.task(leadId)).toMatchObject({ status: "queued", steps: 1 });
+  const advisors = store.db.prepare("SELECT id FROM tasks WHERE consultation_for=?").all(leadId) as { id: string }[];
+  expect(advisors).toHaveLength(1);
+  runtime.recover();
+  await codex.ensureStarted();
+  await codex.loginApiKey("sk-fixture-codex-key-1234567890");
+  await runtime.tick();
+  await idle();
+  expect(store.task(advisors[0].id)).toMatchObject({ status: "completed" });
+  expect(store.db.prepare("SELECT status FROM tool_calls WHERE task_id=? AND tool='multi_edit'").get(advisors[0].id)).toEqual({ status: "failed" });
+
+  await runtime.tick();
+  await idle();
+  await runtime.tick();
+  expect(store.task(leadId)).toMatchObject({ status: "completed", steps: 2 });
+  const resumed = store.db.prepare("SELECT prompt, result FROM codex_turns WHERE task_id=? ORDER BY rowid DESC LIMIT 1").get(leadId) as { prompt: string; result: string };
+  expect(resumed.prompt).toContain("Consultation replies:");
+  expect(resumed.result).toContain("checkpoint authoritative on the server");
+  expect(resumed.result).not.toContain("Other project’s private notes");
+  expect(taskDetail(leadId).teamDiscussion.map(note => note.kind)).toEqual(["team_question", "team_message", "team_reply"]);
+  expect(store.db.prepare("SELECT status,verification_status FROM runs WHERE id=?").get(runId))
+    .toEqual({ status: "review", verification_status: "not_required" });
+});

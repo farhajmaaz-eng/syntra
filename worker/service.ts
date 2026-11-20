@@ -130,6 +130,7 @@ export async function action(path: string, b: any) {
         paused: z.boolean(),
         approvalRequired: z.boolean(),
         studioReadApproval: z.boolean().optional(),
+        lenientMode: z.boolean().optional(),
         mcpCommand: z.string().max(2000),
         mcpArgs: z.array(z.string()).max(30),
         maxSteps: z.number().int().min(5).max(100),
@@ -139,8 +140,12 @@ export async function action(path: string, b: any) {
       throw new Error(
         "Pause the runtime and wait for active tasks before changing settings.",
       );
-    for (const [k, v] of Object.entries(a))
-      if (v !== undefined) set(k, v);
+    db.transaction(() => {
+      if (a.lenientMode !== undefined && a.lenientMode !== get("lenientMode"))
+        event(a.lenientMode ? "Lenient mode enabled" : "Lenient mode disabled", "User");
+      for (const [k, v] of Object.entries(a))
+        if (v !== undefined) set(k, v);
+    })();
     event("Settings saved");
     return { ok: true };
   }
@@ -162,7 +167,7 @@ export async function action(path: string, b: any) {
         provider_options: z.unknown().optional(),
         parameters: z.unknown().optional(),
         enabled: z.boolean(),
-        prompt: z.string().min(10).max(20000),
+        prompt: z.string().min(10),
       })
       .parse(b);
     if (a.name === "Codex" && a.model.length > 200)

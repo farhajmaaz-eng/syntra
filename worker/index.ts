@@ -5,6 +5,7 @@ import { WebSocketServer } from "ws";
 import { db, set, event, secret } from "./store";
 import { studio } from "./mcp";
 import { codex } from "./codex";
+import { actionBodyLimit } from "../src/lib/action-body-limit";
 import {
   active,
   recover,
@@ -52,20 +53,19 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(404).end("{}");
       return;
     }
-    req.setEncoding("utf8");
-    let raw = "";
-    for await (const c of req) {
-      raw += c;
-      if (
-        raw.length >
-        (path === "assets/save"
-          ? 3000000
-          : ["market/import", "telemetry/import"].includes(path)
-            ? 1000000
-            : 128000)
-      )
-        throw new Error("Request too large");
+    const limit = actionBodyLimit(path);
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    for await (const c of req.iterator({ destroyOnReturn: false })) {
+      bytes += c.length;
+      if (bytes > limit) {
+        res.writeHead(413).end(JSON.stringify({ error: `Request body exceeds ${limit.toLocaleString()} bytes.` }));
+        req.resume();
+        return;
+      }
+      chunks.push(c);
     }
+    const raw = Buffer.concat(chunks, bytes).toString("utf8");
     const result = await action(path, JSON.parse(raw || "{}"));
     res.end(JSON.stringify(publicData(result)));
   } catch (e) {

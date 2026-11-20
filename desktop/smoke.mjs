@@ -93,14 +93,19 @@ try {
   assert.equal(codex.ok, true, codex.error);
   assert.equal(codex.status.running, true);
   const settings = await post("/api/settings", {
-    concurrency: 8, paused: false, approvalRequired: true, mcpCommand: "", mcpArgs: [], maxSteps: 30,
+    concurrency: 8, paused: true, approvalRequired: true, lenientMode: true, mcpCommand: "", mcpArgs: [], maxSteps: 30,
   });
   assert.equal(settings.status, 200, await settings.text());
   const project = await post("/api/games", { name: "Desktop smoke project" });
   assert.equal(project.status, 200, await project.text());
+  const prompt = `${"Project context ".repeat(10000)}End of smoke-test prompt.`;
+  const queued = await post("/api/chat", { content: prompt });
+  assert.equal(queued.status, 200, await queued.clone().text());
+  const { taskId } = await queued.json();
   const Database = require("better-sqlite3");
   const db = new Database(join(data, "syntra.sqlite"), { readonly: true, fileMustExist: true });
   assert.equal(db.pragma("journal_mode", { simple: true }), "wal");
+  assert.equal(db.prepare("SELECT instructions FROM tasks WHERE id=?").get(taskId)?.instructions, prompt);
   db.close();
   await close();
 
@@ -108,6 +113,7 @@ try {
   assert.equal(reopened.port, port);
   const saved = await reopened.request("/api/snapshot").then(res => res.json());
   assert.equal(saved.settings.concurrency, 8);
+  assert.equal(saved.settings.lenientMode, true);
   assert(saved.games.some(game => game.name === "Desktop smoke project"));
   await close();
   console.log("Desktop runtime, backend permissions, production UI, WASM, Codex, and SQLite persistence passed.");

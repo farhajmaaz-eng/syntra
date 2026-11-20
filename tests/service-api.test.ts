@@ -49,6 +49,26 @@ describe("worker service and feature safety helpers", () => {
     });
   });
 
+  it("persists Lenient mode, keeps explicit plan review, and stores long Lead requests", async () => {
+    const { db, get } = await import("../worker/store");
+    const { actionBodyLimit } = await import("../src/lib/action-body-limit");
+    const settings = { mcpCommand: "", mcpArgs: [], maxSteps: 30, paused: false, approvalRequired: true };
+    expect(get("lenientMode")).toBe(false);
+    try {
+      await action("settings", { ...settings, lenientMode: true });
+      const objective = `${"Long request ".repeat(14000)}Tail kept.`;
+      expect(actionBodyLimit("chat")).toBeGreaterThan(Buffer.byteLength(JSON.stringify({ content: objective })));
+      const started = await action("chat", { content: objective }) as { id: string; taskId: string };
+      const explicit = await action("chat", { content: "Review this plan first", reviewPlan: true }) as { id: string };
+      expect(db.prepare("SELECT plan_status FROM runs WHERE id=?").get(started.id)).toEqual({ plan_status: "automatic" });
+      expect(db.prepare("SELECT plan_status FROM runs WHERE id=?").get(explicit.id)).toEqual({ plan_status: "pending" });
+      expect(db.prepare("SELECT instructions FROM tasks WHERE id=?").get(started.taskId)).toEqual({ instructions: objective });
+    } finally {
+      await action("settings", { ...settings, lenientMode: false });
+    }
+    expect(get("approvalRequired")).toBe(true);
+  });
+
   it("guards fetch JSON responses against HTML pages and Unexpected token '<'", async () => {
     const { safeResponseJson } = await import("../src/lib/utils");
     const htmlRes = new Response("<!DOCTYPE html><html><body>404</body></html>", {
