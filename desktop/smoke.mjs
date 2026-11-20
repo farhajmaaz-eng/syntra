@@ -92,7 +92,9 @@ try {
   const codex = await post("/api/codex/status", {}).then(res => res.json());
   assert.equal(codex.ok, true, codex.error);
   assert.equal(codex.status.running, true);
-  const settings = await post("/api/settings", { concurrency: 8 });
+  const settings = await post("/api/settings", {
+    concurrency: 8, paused: false, approvalRequired: true, mcpCommand: "", mcpArgs: [], maxSteps: 30,
+  });
   assert.equal(settings.status, 200, await settings.text());
   const project = await post("/api/games", { name: "Desktop smoke project" });
   assert.equal(project.status, 200, await project.text());

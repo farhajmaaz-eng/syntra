@@ -186,7 +186,7 @@ fn main() {
         .on_menu_event(|app, event| {
             let Some(window) = app.get_webview_window("main") else { return; };
             match event.id().as_ref() {
-                "quit" => { let _ = window.close(); }
+                "quit" => app.exit(0),
                 "refresh" if verify_window(&window, app.state::<Arc<Desktop>>().inner()).is_ok() => {
                     let _ = window.reload();
                 }
