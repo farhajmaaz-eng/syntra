@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import {
   displayDate,
+  type MarketSnapshot,
   pitchSections,
   safeJsonValue,
   sectionTitles,
@@ -66,11 +67,15 @@ export default function Pitches({
       });
   }, [params]);
   const pitch = resource.data?.find((p) => p.id === selected);
-  const market = useResource(
-    pitch?.evidence?.length
-      ? `market?id=${encodeURIComponent(pitch.evidence[0].snapshotId)}`
-      : null,
-  );
+  const evidence = useResource<{
+    snapshotId: string;
+    universeId: string;
+    observation?: MarketSnapshot["games"][number];
+    source: string;
+    fetchedAt: string;
+    quality: string;
+  }[]>(pitch?.evidence?.length ? `pitches/evidence?id=${encodeURIComponent(pitch.id)}` : null,
+    pitch?.version);
   const filtered = (resource.data || []).filter(
     (p) =>
       (filter === "all" || p.status === filter) &&
@@ -245,40 +250,39 @@ export default function Pitches({
                 No sourced evidence is attached. This concept is unvalidated.
               </p>
             )}
-            {pitch.evidence.map((ref: any) => {
-              const row =
-                market.data?.current?.id === ref.snapshotId
-                  ? market.data.current.games.find(
-                      (g: any) => g.universeId === ref.universeId,
-                    )
-                  : null;
-              return (
-                <div
-                  className="v2-evidence"
-                  key={`${ref.snapshotId}:${ref.universeId}`}
-                >
-                  <strong>{row?.title || `Universe ${ref.universeId}`}</strong>
-                  {row && (
-                    <p>
-                      {row.players !== undefined
-                        ? `${row.players.toLocaleString()} observed players. `
-                        : ""}
-                      {row.rank !== undefined
-                        ? `Source rank ${row.rank}. `
-                        : ""}
-                      {market.data.current.quality} ·{" "}
-                      {displayDate(row.provenance?.players?.at ?? market.data.current.fetchedAt)}
-                    </p>
+            <ResourceState loading={evidence.loading} error={evidence.error} variant="table">
+              {evidence.data?.filter((entry) => pitch.evidence.some((ref: { snapshotId: string; universeId: string }) =>
+                ref.snapshotId === entry.snapshotId && ref.universeId === entry.universeId,
+              )).map(({ snapshotId, universeId, observation, source, fetchedAt, quality }) => (
+                <div className="v2-evidence" key={`${snapshotId}:${universeId}`}>
+                  <strong>{observation?.title || `Universe ${universeId}`}</strong>
+                  <p>{quality} · Snapshot saved {displayDate(fetchedAt)}</p>
+                  {observation && (
+                    <ul className="pitch-evidence-metrics">
+                      {([
+                        ["players", "Players online"], ["visits", "Visits"], ["favorites", "Favorites"],
+                        ["likes", "Upvotes"], ["approval", "Like ratio"],
+                      ] as const).map(([metric, label]) => {
+                        const value = observation[metric];
+                        const provenance = observation.provenance?.[metric];
+                        if (value === undefined) return null;
+                        return <li key={metric}>
+                          <strong>{value.toLocaleString()}{metric === "approval" ? "%" : ""}</strong> {label}
+                          <small>
+                            <a className="text-link" href={provenance?.url || source} target="_blank" rel="noreferrer">
+                              {provenance ? displayDate(provenance.at) : "Snapshot source"}
+                            </a>
+                          </small>
+                        </li>;
+                      })}
+                    </ul>
                   )}
-                  <Link
-                    className="text-link"
-                    href={`/market?snapshot=${encodeURIComponent(ref.snapshotId)}`}
-                  >
+                  <Link className="text-link" href={`/market?snapshot=${encodeURIComponent(snapshotId)}`}>
                     Open source snapshot <ArrowUpRight size={13} />
                   </Link>
                 </div>
-              );
-            })}
+              ))}
+            </ResourceState>
           </section>
           <section className="panel">
             <h3>Version history</h3>

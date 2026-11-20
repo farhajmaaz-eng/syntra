@@ -1,0 +1,114 @@
+Build Syntra Desktop — Windows (Tauri 2)
+
+Convert the existing Syntra web application into a fully functional Windows desktop application using Tauri 2.
+
+Do not rebuild Syntra from scratch. Work directly with the existing repository and preserve its current architecture wherever possible.
+
+1. Frontend — Non-negotiable
+
+The desktop application must look and behave 1:1 like the existing Syntra website.
+
+- Reuse the exact existing Next.js/React frontend, components, stylesheets, assets, fonts, icons and design system.
+- Preserve the sidebar, navigation, workspace, chat interface, agent management, 3D editor, settings and all existing interactions.
+- Do not redesign, simplify or recreate any existing UI.
+- Do not introduce a separate desktop frontend.
+- Only add desktop-specific UI where necessary for native Windows integration.
+
+The existing web application must remain fully functional and independent.
+
+2. Desktop architecture
+
+Use Tauri 2 as the desktop shell, with Windows WebView2.
+
+Integrate the existing technologies:
+
+- TypeScript/Next.js: shared frontend.
+- Node.js: existing backend.
+- better-sqlite3: existing database.
+- Codex workers: existing agent execution system.
+- Rust/WASM: existing 3D model editor.
+
+Do not rewrite existing TypeScript or Rust functionality just to fit Tauri.
+
+Bundle and manage the Node.js backend and worker processes appropriately for Windows. Handle process startup, shutdown, crashes and recovery reliably.
+
+3. Agent orchestration
+
+Syntra supports up to eight simultaneously running agents.
+
+Preserve this capability completely.
+
+Ensure:
+
+- Independent agent execution.
+- Reliable task coordination.
+- Correct event propagation.
+- Cancellation support.
+- Worker lifecycle management.
+- No duplicate task execution.
+- Database operations remain concurrency-safe.
+
+Keep SQLite with WAL unless an actual technical limitation requires otherwise. Do not migrate databases unnecessarily.
+
+4. Native Windows integration
+
+Implement:
+
+- Native application window and controls.
+- Proper application icon and branding.
+- File and folder dialogs.
+- Native notifications.
+- Keyboard shortcuts.
+- Application menu.
+- Graceful application shutdown.
+- Persistent user data in the appropriate Windows application data directory.
+
+Make the application feel like a proper Windows desktop product, not a website opened in a browser window.
+
+5. Packaging
+
+Configure production builds and generate a distributable Windows ".exe" installer.
+
+Ensure:
+
+- Backend and worker dependencies are included.
+- Native dependencies such as better-sqlite3 are correctly built for the target environment.
+- User data survives application updates.
+- Application startup works without requiring users to manually run terminal commands.
+
+Use GitHub Actions or another suitable Windows build environment if necessary.
+
+6. Execution requirements
+
+First inspect the entire existing repository and identify the actual entry points, scripts, dependencies and process architecture.
+
+Then implement the desktop integration incrementally.
+
+Do not:
+
+- Break the existing web deployment.
+- Remove existing functionality.
+- Replace working components without necessity.
+- Introduce unnecessary dependencies.
+- Hardcode development URLs into production.
+- Fake functionality or leave nonfunctional placeholders.
+
+Test the production frontend, backend, database, WASM editor and eight-agent concurrency.
+
+Fix integration issues rather than merely documenting them.
+
+Final objective
+
+Deliver a working Syntra Windows desktop application that:
+
+1. Looks and behaves identically to Syntra Web.
+2. Uses Tauri 2.
+3. Runs the existing backend and agent infrastructure locally.
+4. Supports eight concurrent agents.
+5. Preserves the Rust/WASM 3D editor.
+6. Installs and launches normally on Windows.
+7. Leaves Syntra Web untouched and functional.
+
+Prioritize correctness, reliability and architectural compatibility over rushing the implementation.
+
+Start by inspecting the repository, then implement the solution. Do not stop at producing a plan.

@@ -51,6 +51,7 @@ export const navigation = [
   ["illustrate", "Illustrate", Box],
   ["graphics", "Syntra Graphics", Palette],
   ["game-intelligence", "Game Intelligence", Gauge],
+  ["liveops", "LiveOps", Activity],
 ] as const;
 
 export function UsagePanel({
@@ -229,14 +230,14 @@ export default function WorkspaceShell(props: Props) {
       >
         <Search size={15} />
         <span>Search workspace</span>
-        <kbd>⌘ K</kbd>
+        <kbd>Ctrl K</kbd>
       </button>
       <nav aria-label="Main navigation">
         {["home", "chat", "tasks", "reviews", "team"].map(navItem)}
       </nav>
       <span className="nav-label">Build</span>
       <nav aria-label="Build navigation">
-        {["games", "graphics", "illustrate", "codex"].map(navItem)}
+        {["games", "liveops", "graphics", "illustrate", "codex"].map(navItem)}
       </nav>
       <span className="nav-label">Research</span>
       <nav aria-label="Research navigation">

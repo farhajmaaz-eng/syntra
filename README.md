@@ -41,11 +41,19 @@ See [Studio connection recovery](docs/STUDIO_CONNECTION_RECOVERY.md) if a connec
 
 ## Research Roblox games
 
-Open **Game Intelligence** from the sidebar or from **Games** to browse Trending, Top CCU, Rising, Most Visited, Most Favorited and Up-and-Coming. Search for an experience or tracked creator, filter by genre or concurrent players, and open an experience to inspect its source links and history. Ranked counts cover the tracked catalog. Rising uses a reported 24-hour CCU change or Syntra observations taken about a day apart.
+Open **Game Intelligence** from the sidebar to browse Trending, Top CCU, Rising, Most Visited, Most Favorited and Up-and-Coming. Search for an experience or tracked creator, filter by genre or concurrent players, and open an experience to inspect its source links and history. Ranked counts cover the tracked catalog. Rising uses a reported 24-hour CCU change or Syntra observations taken about a day apart.
 
-Use **Settings → Roblox data sources** to turn providers on or off, set refresh intervals, and edit their catalog endpoints. Syntra reads keyless feeds from [Roblox](https://www.roblox.com/charts), [RoWatcher](https://rowatcher.com/developers), [RobloxGameStats](https://robloxgamestats.com/docs/api), [PlaySurge](https://playsurge.gg/docs), and [BloxHub](https://bloxhub.games/api). RobloxGameStats limits its free API to personal and non-commercial use. Syntra keeps cached results and local observations in `game-intelligence.sqlite` and shows provider status when a feed is interrupted. Lead can search, read rankings, and compare games with source links.
+Use **Settings → Roblox data sources** to turn providers on or off, set refresh intervals, and edit their catalog endpoints. Syntra reads keyless feeds from [Roblox](https://www.roblox.com/charts), [RoWatcher](https://rowatcher.com/developers), [RobloxGameStats](https://robloxgamestats.com/docs/api), [PlaySurge](https://playsurge.gg/docs), and [BloxHub](https://bloxhub.games/api). RobloxGameStats limits its free API to personal and non-commercial use. Syntra keeps cached results and local observations in `game-intelligence.sqlite` and shows provider status when a feed is interrupted. Lead can search, read rankings, compare games, and save sourced observations directly to a draft pitch.
 
 Select up to five experiences in **Game Intelligence** to compare their metrics and observation times side by side. **Draft with Lead** saves the selected observations to **Market** and opens an editable research request. Lead can cite that saved snapshot in a versioned pitch and propose a prototype and playtest criteria. Review the pitch before converting it to project work.
+
+## Monitor a published game
+
+In **Games → Edit project**, enter the Roblox universe ID. Select the project in **LiveOps → Public activity** to see current public observations, timestamps, source links, and available player history. Each chart keeps its own observation window. **Investigate player activity** opens a Lead request with the selected series and its dates. Open **Fixes & Reports** for Studio test results and tracked failures.
+
+For private metrics, open **LiveOps → Charts → Import CSV**. Export one chart from [Roblox Creator Dashboard](https://create.roblox.com/docs/production/analytics/analytics-dashboard#export-a-chart), choose its metric, and upload the timestamp/value CSV. Each import supports up to 2,000 observations. Date-only rows use UTC. Choose the decimal option for percentages written as fractions, and use **Import JSON** for exports with multiple series. The worker stores the imported analytics locally. Creator permissions are required to obtain private exports. FPS, ping, live server occupancy, live joins, and automatic drop-off telemetry are outside the public feed.
+
+Agents can search completed work from human-accepted runs with `project_history`. Results are scoped to the current project and retain links through their task and run IDs.
 
 ## Design and model with Codex
 

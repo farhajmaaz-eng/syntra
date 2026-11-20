@@ -69,3 +69,45 @@ it("coalesces a refresh, falls back to stale data, and honors rate limits across
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
+
+
+it("serves a linked LiveOps universe with official metrics and cached history without loading chart rankings", async () => {
+  const config = settings();
+  saveSettings({
+    ...config, gamestats: { ...config.gamestats, enabled: false },
+    rowatcher: { ...config.rowatcher, enabled: false },
+    playsurge: { ...config.playsurge, enabled: false },
+  });
+  const fetcher = vi.fn(async (address: string) => {
+    const path = new URL(address).pathname;
+    if (path === "/v1/games") return Response.json({ data: [
+      { id: 99, rootPlaceId: 83, name: "Other game", playing: 900 },
+      { id: 87, rootPlaceId: 18, name: "Linked game", playing: 0, visits: 43, maxPlayers: 14 },
+    ] });
+    if (path === "/v1/games/votes")
+      return Response.json({ data: [{ id: 87, upVotes: 18, downVotes: 2 }] });
+    if (path === "/v1/games/icons") return Response.json({ data: [] });
+    throw new Error("Unrelated feed requested");
+  });
+  vi.stubGlobal("fetch", fetcher);
+  try {
+    const { GET } = await import("../src/app/api/game-intelligence/route");
+    const req = () => new Request("http://localhost/api/game-intelligence?view=liveops&game=87");
+    const response = await GET(req());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      game: { universeId: 87, playing: 0, visits: 43, rating: 90,
+        voteCounts: { up: 18, total: 20 },
+        serverCapacity: { value: 14, source: { provider: "roblox" } },
+      },
+      history: [{ name: "Syntra observations", points: [{ playing: 0, visits: 43 }] }],
+    });
+    expect((await GET(req())).status).toBe(200);
+    expect(fetcher.mock.calls.map(([address]) => new URL(address).pathname).sort()).toEqual([
+      "/v1/games", "/v1/games/icons", "/v1/games/votes",
+    ]);
+  } finally {
+    vi.unstubAllGlobals();
+    saveSettings(config);
+  }
+});

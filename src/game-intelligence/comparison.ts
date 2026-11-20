@@ -23,12 +23,15 @@ export function comparisonSnapshot(games: Game[], capturedAt: number) {
       visits: game.visits ?? undefined,
       favorites: game.favorites ?? undefined,
       approval: game.rating ?? undefined,
+      likes: game.voteCounts?.up,
+      votes: game.voteCounts?.total,
       growth24h: game.growth ?? undefined,
       provenance: Object.fromEntries(Object.entries({
         players: evidenceSource(game.metricSources.playing),
         visits: evidenceSource(game.metricSources.visits),
         favorites: evidenceSource(game.metricSources.favorites),
         approval: evidenceSource(game.metricSources.rating),
+        likes: evidenceSource(game.voteCounts?.source),
         growth24h: game.growthAt === null ? undefined : {
           at: new Date(game.growthAt).toISOString(),
           url: game.sources.find(source => source.provider === game.growthSource)?.url ?? "",

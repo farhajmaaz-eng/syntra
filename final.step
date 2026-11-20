@@ -1,0 +1,122 @@
+Syntra — Web Version Completion & Competitive Upgrade
+
+Your task is to inspect the existing Syntra codebase, identify what's missing compared with RoAutomation, and improve Syntra into a more capable Roblox development environment.
+
+IMPORTANT: Inspect before changing anything. Do not assume a feature is missing just because it isn't obvious. Verify the existing implementation, APIs, backend, and UI first.
+
+1. Existing Syntra strengths
+
+Preserve and build upon these existing systems:
+
+- Multi-agent orchestration, including Lead, workers, tasks, review, and team management.
+- Six live market-intelligence APIs covering trending games, top CCU, keywords, rising games, and up-and-coming games. Agents can access this data.
+- Existing Roblox Studio MCP integration.
+- Syntra Graphics and Illustrate, including the custom design environment.
+- Existing custom UI and overall visual identity.
+
+Do not rebuild or duplicate working features.
+
+2. Use RoAutomation as a functional benchmark
+
+Study the provided RoAutomation screenshots and compare its functionality with Syntra.
+
+Pay particular attention to:
+
+Navigation and workspace layout
+
+RoAutomation uses a persistent sidebar divided into clear sections:
+
+Workspace
+
+- Home
+- Lead
+- Review, with pending-review count
+- Library
+
+Studio
+
+- Create
+- Games
+- LiveOps
+- Pitches
+- Asset Packs
+- Market
+- Pro
+
+The sidebar also has:
+
+- Product branding at the top.
+- A global search / command palette with Ctrl+K.
+- Clear active-page highlighting.
+- Contextual badges such as review counts and NEW labels.
+- A compact, organized hierarchy that makes major features easy to discover.
+
+Evaluate Syntra's existing navigation and improve its organization where necessary. Do not blindly copy RoAutomation's styling; preserve Syntra's own visual identity.
+
+Game pitches and market intelligence
+
+The Snowy Ski Lodge example demonstrates a detailed game-concept page containing:
+
+- Game title, description, and concept tags.
+- A differentiation section explaining why the idea stands out against an existing game.
+- Comparable games and their player counts.
+- Likes, upvotes per day, and other available market indicators.
+- A breakdown of gameplay, first 60 seconds, progression goals, monetization, and memorable moments.
+
+Check whether Syntra can produce similarly useful, evidence-based game concepts. Connect this to its existing market APIs instead of creating another disconnected market system. Clearly distinguish real data from estimates or generated suggestions.
+
+LiveOps dashboard
+
+The LiveOps screenshot demonstrates a per-game analytics workspace with:
+
+- Current players, server capacity, FPS, ping, peak players, and joins.
+- Daily active users and new/returning player trends.
+- Visits, like ratio, day-one retention, day-seven retention, average session length, and paying-player percentage.
+- Charts showing player activity over time.
+- Tabs for player drop-off, sessions/money/errors, trends, benchmarks, and fixes/reports.
+- An attention section highlighting games or metrics that need action.
+
+Audit whether Syntra has the infrastructure to provide this. Implement useful analytics and visualizations using real accessible data. Do not fabricate metrics or display sample data as real production data. If Roblox does not expose a metric through available APIs, clearly label the limitation.
+
+3. Audit the competitive gaps
+
+Investigate Syntra against RoAutomation in these areas:
+
+1. Specialized agents and Roblox knowledge: Domain-specific expertise, useful workflows, and a strong Roblox development knowledge base.
+2. Autonomous development loop: Planning, building, running, playtesting, observing errors, fixing issues, and testing again.
+3. Testing and debugging: Runtime logs, screenshots, multiplayer testing, performance inspection, and reliable Roblox Studio interaction.
+4. 3D and visual production: Blender integration, models, animations, VFX, thumbnails, and other game assets.
+5. Asset discovery: Searchable asset libraries, reusable templates, and convenient asset workflows.
+6. Game analytics: LiveOps dashboards, retention, player activity, performance, and actionable recommendations.
+7. Game ideation: Evidence-based pitches, competitor comparisons, gameplay loops, and monetization analysis.
+8. Review and approval: Human approval where appropriate, clear task status, and understandable agent decisions.
+9. Project memory: Persistent knowledge of each game's architecture, scripts, decisions, and development history.
+10. Reliability: Correct task cancellation, event handling, worker scheduling, error recovery, and coordination.
+
+4. Implementation priorities
+
+After the audit:
+
+- Identify the highest-impact missing capabilities.
+- Implement them incrementally, prioritizing features that make Syntra meaningfully better rather than simply matching RoAutomation's feature count.
+- Reuse existing infrastructure and integrations wherever possible.
+- Keep everything modular, maintainable, and model-agnostic.
+- Add proper loading states, error handling, logging, and permission checks.
+- Make every implemented feature genuinely functional. Avoid placeholder buttons, fake analytics, and UI that implies functionality that does not exist.
+- Preserve Syntra's existing visual identity and polish.
+- Keep performance and resource usage reasonable.
+
+5. Final verification
+
+Test the affected workflows and report:
+
+- What Syntra already had.
+- What was missing.
+- What you implemented.
+- What still needs external APIs, credentials, or integrations.
+- Any technical limitations or known bugs.
+- How to test each new feature.
+
+End goal: Make Syntra a reliable, extensible, model-agnostic Roblox development environment that can take a game from research and ideation through creation, testing, launch, and ongoing improvement—and outperform RoAutomation in the areas where Syntra has a genuine advantage.
+
+Do not sacrifice reliability or usability just to add more features.

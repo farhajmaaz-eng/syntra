@@ -14,7 +14,8 @@ export type Game = {
   key: string; universeId: number | null; placeId: number | null; name: string;
   creator: string; genre: string; description: string; icon: string;
   playing: number | null; visits: number | null; favorites: number | null;
-  rating: number | null; growth: number | null; growthAt: number | null; growthSource?: Provider;
+  rating: number | null; voteCounts?: { up: number; total: number; source: Source };
+  serverCapacity?: { value: number; source: Source }; growth: number | null; growthAt: number | null; growthSource?: Provider;
   ranks: Partial<Record<Category, number>>; rankSources: Partial<Record<Category, Provider>>;
   metricSources: Partial<Record<"playing" | "visits" | "favorites" | "rating", Source>>; sources: Source[];
 };

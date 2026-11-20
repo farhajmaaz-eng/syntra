@@ -27,6 +27,7 @@ export const pitchSections = [
   "progression",
   "economy",
   "socialLoop",
+  "memorableMoments",
   "cadence",
   "mvp",
   "validation",
@@ -40,12 +41,18 @@ export const sectionTitles: Record<string, string> = {
   progression: "20+ minute progression",
   economy: "Economy & monetization",
   socialLoop: "Social loop",
+  memorableMoments: "Memorable moments",
   cadence: "Content cadence",
   mvp: "MVP scope",
   validation: "Playtest & acceptance criteria",
   risks: "Risks & open questions",
 };
 export const metricDefinitions = {
+  new_users: { label: "New users", unit: "players", group: "Players" },
+  returning_users: { label: "Returning users", unit: "players", group: "Players" },
+  d1_retention: { label: "Day 1 retention", unit: "%", group: "Sessions / Retention" },
+  d7_retention: { label: "Day 7 retention", unit: "%", group: "Sessions / Retention" },
+  payer_rate: { label: "Paying players", unit: "%", group: "Charts" },
   dau: { label: "Daily active users", unit: "players", group: "Players" },
   online: { label: "Players online", unit: "players", group: "Players" },
   revenue: { label: "Revenue earned", unit: "Robux", group: "Charts" },
@@ -126,7 +133,7 @@ export const marketSchema = z
             approval: z.number().min(0).max(100).optional(),
             growth24h: z.number().optional(),
             provenance: z.partialRecord(
-              z.enum(["players", "visits", "favorites", "approval", "growth24h"]),
+              z.enum(["players", "visits", "favorites", "approval", "growth24h", "likes"]),
               z.object({ url: webUrl, at: timestamp }),
             ).optional(),
             url: webUrl.default(""),
@@ -174,7 +181,7 @@ export const telemetrySchema = z
         }),
       )
       .min(1)
-      .max(7),
+      .max(Object.keys(metricDefinitions).length),
   })
   .superRefine((s, ctx) => {
     const seen = new Set<string>();
@@ -192,10 +199,10 @@ export const telemetrySchema = z
             code: "custom",
             message: "Metric observations must precede collection time",
           });
-        if (m.metric === "first_minute" && p.value > 100)
+        if (metricDefinitions[m.metric].unit === "%" && p.value > 100)
           ctx.addIssue({
             code: "custom",
-            message: "Retention must be a percentage from 0 to 100",
+            message: "Percentage observations must be from 0 to 100",
           });
       }
   });

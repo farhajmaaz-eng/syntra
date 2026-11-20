@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   const query = new URL(request.url).searchParams;
   const key = query.get("game");
   try {
-    const data = key ? await gameDetail(key) : query.get("q") ? await searchGames(query.get("q")!) : await catalog();
+    const data = key ? await gameDetail(key, { direct: query.get("view") === "liveops" }) : query.get("q") ? await searchGames(query.get("q")!) : await catalog();
     const payload = data && "games" in data
       ? { ...data, games: data.games.map(game => ({ ...game, description: "" })) }
       : data;

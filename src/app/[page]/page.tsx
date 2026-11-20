@@ -15,6 +15,7 @@ export default async function Page({
       "tasks",
       "codex",
       "games",
+      "liveops",
       "game-intelligence",
       "reviews",
       "library",

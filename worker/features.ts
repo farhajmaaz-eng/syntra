@@ -529,6 +529,7 @@ export function featureRead(path: string, query: URLSearchParams): unknown {
       )
       .all(gameId);
     return {
+      gameId,
       snapshots: rows.map((r) => ({ id: r.id, ...JSON.parse(r.payload) })),
       integration: {
         status: "import-only",
@@ -536,6 +537,22 @@ export function featureRead(path: string, query: URLSearchParams): unknown {
           "Import authorized Roblox analytics exports. Syntra does not have access to player, revenue or retention telemetry.",
       },
     };
+  }
+  if (path === "pitches/evidence") {
+    const id = identifier.parse(query.get("id"));
+    const pitch = db.prepare("SELECT payload FROM pitches WHERE id=?").get(id) as
+      { payload: string } | undefined;
+    if (!pitch) throw new Error("Pitch not found");
+    const snapshots = new Map<string, ReturnType<typeof readMarketEvidence>>();
+    return pitchSchema.parse(JSON.parse(pitch.payload)).evidence.map((ref) => {
+      let snapshot = snapshots.get(ref.snapshotId);
+      if (!snapshot) {
+        snapshot = readMarketEvidence(ref.snapshotId);
+        snapshots.set(ref.snapshotId, snapshot);
+      }
+      const observation = snapshot.games.find((row) => row.universeId === ref.universeId);
+      return { ...ref, observation, source: snapshot.source, fetchedAt: snapshot.fetchedAt, quality: snapshot.quality };
+    });
   }
   if (path === "pitches") {
     const rows: any[] = db
@@ -557,6 +574,18 @@ export function featureRead(path: string, query: URLSearchParams): unknown {
     }));
   }
 }
+export function readProjectHistory(gameId: string, query = "", limit = 5) {
+  return db.prepare(`
+    SELECT t.id AS taskId, t.run_id AS runId, t.title, t.agent, t.updated,
+           substr(t.result, 1, 700) AS result
+    FROM runs r JOIN tasks t ON t.run_id=r.id
+    WHERE r.game_id=? AND r.status='accepted' AND t.status='completed'
+      AND length(trim(t.result))>0
+      AND (?='' OR instr(lower(t.title), lower(?))>0 OR instr(lower(t.result), lower(?))>0)
+    ORDER BY t.updated DESC, t.rowid DESC LIMIT ?
+  `).all(gameId, query, query, query, limit);
+}
+
 export function readMarketEvidence(id: string) {
   const row = db.prepare("SELECT payload FROM market_snapshots WHERE id=?").get(id) as
     { payload: string } | undefined;

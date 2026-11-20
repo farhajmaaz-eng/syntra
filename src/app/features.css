@@ -1281,3 +1281,23 @@
     max-height: none;
   }
 }
+
+.pitch-evidence-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+  gap: 8px;
+  margin-block: 10px;
+  padding: 0;
+  list-style: none;
+}
+.pitch-evidence-metrics li {
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--app-bg);
+}
+.pitch-evidence-metrics small {
+  display: block;
+  margin-top: 3px;
+}

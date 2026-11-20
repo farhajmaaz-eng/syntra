@@ -9,6 +9,8 @@ import {
   displayDate,
 } from "@/lib/feature-contracts";
 import { useResource } from "@/lib/use-resource";
+import type { Detail } from "../game-intelligence/model";
+import AnalyticsCsv from "./analytics-csv";
 import { Button } from "./ui/button";
 import { CustomSelect } from "./ui/custom-select";
 import { DetailDrawer, EmptyState } from "./ui/workspace-primitives";
@@ -20,6 +22,7 @@ import {
 } from "./feature-ui";
 export default function GameOps({
   data,
+  liveOps,
   selectedGame,
   chooseGame,
   act,
@@ -27,37 +30,37 @@ export default function GameOps({
   newTask,
 }: {
   data: any;
+  liveOps: boolean;
   selectedGame: string;
   chooseGame: (id: string) => void;
   act: Act;
   busy: boolean;
   newTask: (initial?: string) => void;
 }) {
-  const [tab, setTab] = useState("Overview"),
+  const [tab, setTab] = useState(liveOps ? "Public activity" : "Overview"),
     [add, setAdd] = useState(false),
     [edit, setEdit] = useState(false),
-    [importing, setImporting] = useState(false),
+    [importing, setImporting] = useState<"csv" | "json" | null>(null),
     [discovery, setDiscovery] = useState<any>(null),
     [range, setRange] = useState("30");
   const game = data.games.find((g: any) => g.id === selectedGame);
   const telemetry = useResource(
-    game && !data.standaloneMode
+    game && liveOps && !["Public activity", "Fixes & Reports"].includes(tab) && !data.standaloneMode
       ? `telemetry?gameId=${encodeURIComponent(game.id)}`
       : null,
     data.settings.featureRevision || 0,
   );
-  const snapshots: any[] = telemetry.data?.snapshots || [];
+  const snapshots: any[] = telemetry.data?.gameId === game?.id ? telemetry.data?.snapshots ?? [] : [];
   const [source, setSource] = useState("");
   const sources = [...new Set(snapshots.map((s) => s.source))];
   const selectedSource = sources.includes(source) ? source : sources[0];
   const scoped = snapshots.filter((s) => s.source === selectedSource);
   const newest = scoped[0];
-  const latest = Math.max(
-    0,
-    ...scoped.flatMap((s) =>
-      s.metrics.flatMap((m: any) => m.points.map((p: any) => Date.parse(p.at))),
-    ),
-  );
+  let latest = 0;
+  for (const snapshot of scoped)
+    for (const metric of snapshot.metrics)
+      for (const point of metric.points)
+        latest = Math.max(latest, Date.parse(point.at));
   const from = range === "all" ? 0 : latest - Number(range) * 86400000;
   const observations = new Map<string, any>();
   for (const s of [...scoped].reverse())
@@ -76,20 +79,21 @@ export default function GameOps({
     data.runs.filter((r: any) => r.game_id === game?.id).map((r: any) => r.id),
   );
   const tasks = data.tasks.filter((t: any) => runIds.has(t.run_id));
-  const tabs = [
-    "Overview",
+  const failures = tasks.filter((t: any) => ["failed", "blocked"].includes(t.status)).length;
+  const tabs = liveOps ? [
+    "Public activity",
     "Charts",
     "Players",
     "Sessions / Retention",
     "Trends",
     "Benchmarks",
     "Fixes & Reports",
-  ];
+  ] : ["Overview", "Fixes & Reports"];
   return (
     <div className="v2-stack">
       <div className="toolbar">
-        <h2>Your games & LiveOps</h2>
-        <Button
+        <h2>Projects</h2>
+        {!liveOps && <><Button
           variant="outline"
           disabled={busy}
           onClick={async () => {
@@ -103,7 +107,7 @@ export default function GameOps({
         <Button onClick={() => setAdd(true)}>
           <Plus size={14} />
           Add project
-        </Button>
+        </Button></>}
       </div>
       {discovery && (
         <section className="panel">
@@ -151,17 +155,19 @@ export default function GameOps({
                   : "Universe ID not connected"}
               </p>
             </div>
-            <Button variant="outline" onClick={() => setEdit(true)}>
-              Edit project
-            </Button>
+            {!liveOps && (
+              <Button variant="outline" onClick={() => setEdit(true)}>
+                Edit project
+              </Button>
+            )}
           </div>
-          <StudioConnection
+          {!liveOps && <StudioConnection
             key={game.id}
             data={data}
             game={game}
             act={act}
             busy={busy}
-          />
+          />}
           <div className="tabs" role="group" aria-label="Game analytics views">
             {tabs.map((t) => (
               <button
@@ -170,11 +176,13 @@ export default function GameOps({
                 aria-pressed={tab === t}
                 onClick={() => setTab(t)}
               >
-                {t}
+                {t}{t === "Fixes & Reports" && failures > 0 ? ` (${failures} need attention)` : ""}
               </button>
             ))}
           </div>
-          {tab === "Overview" ? (
+          {tab === "Public activity" ? (
+            <PublicActivity key={game.universe_id ?? game.id} universeId={game.universe_id} newTask={newTask} />
+          ) : tab === "Overview" ? (
             <>
               <div className="stats overview-stats">
                 <div>
@@ -211,8 +219,8 @@ export default function GameOps({
                 </div>
                 <div>
                   <span>Telemetry</span>
-                  <strong>{snapshots.length}</strong>
-                  <label>imported snapshots · no live feed</label>
+                  <Link href="/liveops" className="text-link">Open LiveOps <ArrowUpRight size={13} /></Link>
+                  <label>Public activity and creator analytics</label>
                 </div>
               </div>
               <section className="panel form">
@@ -312,14 +320,20 @@ export default function GameOps({
                         {displayDate(newest.fetchedAt)}
                       </>
                     ) : (
-                      "Import an authorized Roblox analytics export. Syntra cannot access players, revenue, sessions or retention without your data."
+                      "Import analytics from a Creator Dashboard you can access. Public player counts are available under Public activity."
                     )}
                   </p>
                 </div>
-                <Button variant="outline" onClick={() => setImporting(true)}>
-                  <Upload size={14} />
-                  Import analytics
-                </Button>
+                {data.standaloneMode ? (
+                  <small>Start the Syntra worker to save analytics imports.</small>
+                ) : (
+                  <div className="actions">
+                    <Button variant="outline" onClick={() => setImporting("csv")}>
+                      <Upload size={14} /> Import CSV
+                    </Button>
+                    <Button variant="outline" onClick={() => setImporting("json")}>Import JSON</Button>
+                  </div>
+                )}
               </section>
               <ResourceState
                 loading={telemetry.loading}
@@ -366,21 +380,18 @@ export default function GameOps({
                     {tab === "Trends" || tab === "Benchmarks" ? (
                       <div className="v2-chart-grid">
                         {Object.entries(metricDefinitions).map(([key, def]) => {
-                          const ps = points.filter(
-                            (p) =>
-                              p.metric === key &&
-                              p.series ===
-                                points.find((x) => x.metric === key)?.series,
-                          );
+                          const primary = points.find((p) => p.metric === key)?.series;
+                          const ps = points.filter((p) => p.metric === key && p.series === primary);
                           if (ps.length < 2) return null;
                           const delta = ps.at(-1).value - ps[0].value;
+                          const values = ps.map((p) => p.value).sort((a, b) => a - b);
                           return (
                             <section className="panel form" key={key}>
                               <h3>{def.label}</h3>
                               <p>
                                 {tab === "Trends"
                                   ? `${delta >= 0 ? "+" : ""}${delta.toLocaleString()} ${def.unit} between ${displayDate(ps[0].at)} and ${displayDate(ps.at(-1).at)}`
-                                  : `Observed range: ${Math.min(...ps.map((p) => p.value)).toLocaleString()}–${Math.max(...ps.map((p) => p.value)).toLocaleString()} ${def.unit}. Median: ${median(ps.map((p) => p.value)).toLocaleString()}.`}
+                                  : `Observed range: ${values[0].toLocaleString()}–${values.at(-1)!.toLocaleString()} ${def.unit}. Median: ${median(values).toLocaleString()}.`}
                               </p>
                               <small>
                                 Source: {selectedSource} · {ps.length}{" "}
@@ -545,7 +556,16 @@ export default function GameOps({
           </form>
         </DetailDrawer>
       )}
-      {importing && game && (
+      {importing === "csv" && game && (
+        <AnalyticsCsv
+          key={game.id}
+          gameId={game.id}
+          universeId={game.universe_id}
+          close={() => setImporting(null)}
+          submit={(value) => act("telemetry/import", value)}
+        />
+      )}
+      {importing === "json" && game && (
         <ImportDialog
           title="Import analytics"
           description="Use a JSON export from a source you are authorized to access. No credentials are stored in this export."
@@ -556,7 +576,7 @@ export default function GameOps({
             quality: "exported",
             metrics: [{ metric: "dau", points: [] }],
           }}
-          close={() => setImporting(false)}
+          close={() => setImporting(null)}
           submit={(value) =>
             act("telemetry/import", { ...value, gameId: game.id })
           }
@@ -565,8 +585,7 @@ export default function GameOps({
     </div>
   );
 }
-function median(values: number[]) {
-  const sorted = [...values].sort((a, b) => a - b);
+function median(sorted: number[]) {
   const m = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[m] : (sorted[m - 1] + sorted[m]) / 2;
 }
@@ -574,11 +593,14 @@ export function ChartPanel({
   title,
   unit,
   points,
+  attribution = "Imported observations",
 }: {
   title: string;
   unit: string;
   points: any[];
+  attribution?: string;
 }) {
+  const [showTable, setShowTable] = useState(false);
   if (!points.length)
     return (
       <section className="panel v2-chart">
@@ -588,19 +610,40 @@ export function ChartPanel({
         </p>
       </section>
     );
-  const series = [...new Set(points.map((p) => p.series))];
+  const grouped = new Map<string, typeof points>();
+  for (const p of points) {
+    const seriesPoints = grouped.get(p.series) ?? [];
+    seriesPoints.push(p);
+    grouped.set(p.series, seriesPoints);
+  }
+  const series = [...grouped.keys()];
+  const plotted = series.map((name) => {
+    const group = grouped.get(name)!;
+    if (group.length <= 180) return group;
+    return Array.from({ length: 180 }, (_, index) =>
+      group[Math.round(index * (group.length - 1) / 179)],
+    );
+  });
   const colors = [
-    "#8ab4f8",
+    "var(--accent)",
     "#34d399",
     "#fbbf24",
     "#60a5fa",
     "#f87171",
     "#56d39c",
   ];
-  const xMin = Math.min(...points.map((p) => Date.parse(p.at))),
-    xMax = Math.max(...points.map((p) => Date.parse(p.at)));
-  const yMax =
-    unit === "%" ? 100 : Math.max(1, ...points.map((p) => p.value)) * 1.1;
+  const { xMin, xMax, maxValue } = points.reduce(
+    (bounds, point) => {
+      const date = Date.parse(point.at);
+      return {
+        xMin: Math.min(bounds.xMin, date),
+        xMax: Math.max(bounds.xMax, date),
+        maxValue: Math.max(bounds.maxValue, point.value),
+      };
+    },
+    { xMin: Infinity, xMax: -Infinity, maxValue: 1 },
+  );
+  const yMax = unit === "%" ? 100 : maxValue * 1.1;
   const x = (p: any) =>
       48 +
       (xMax === xMin ? 210 : ((Date.parse(p.at) - xMin) / (xMax - xMin)) * 420),
@@ -608,7 +651,7 @@ export function ChartPanel({
   return (
     <section className="panel v2-chart">
       <h3>{title}</h3>
-      <small>{unit} · actual imported observations</small>
+      <small>{unit} · {attribution}{points.length > plotted.flat().length ? " · Chart samples long series" : ""}</small>
       <svg
         role="img"
         aria-label={`${title}, ${points.length} observations`}
@@ -637,14 +680,11 @@ export function ChartPanel({
               fill="none"
               stroke={colors[i % colors.length]}
               strokeWidth="2"
-              points={points
-                .filter((p) => p.series === s)
+              points={plotted[i]
                 .map((p) => `${x(p)},${y(p)}`)
                 .join(" ")}
             />
-            {points
-              .filter((p) => p.series === s)
-              .map((p) => (
+            {plotted[i].map((p) => (
                 <circle
                   key={`${p.at}:${p.series}`}
                   cx={x(p)}
@@ -675,9 +715,9 @@ export function ChartPanel({
           </span>
         ))}
       </div>
-      <details>
-        <summary>View data table</summary>
-        <div className="table-wrap">
+      <details onToggle={(event) => setShowTable(event.currentTarget.open)}>
+        <summary>View data table{points.length > 250 ? " (latest 250 observations)" : ""}</summary>
+        {showTable && <div className="table-wrap">
           <table>
             <thead>
               <tr>
@@ -688,7 +728,7 @@ export function ChartPanel({
               </tr>
             </thead>
             <tbody>
-              {points.map((p) => (
+              {points.slice(-250).map((p) => (
                 <tr key={`${p.series}:${p.at}`}>
                   <td>{displayDate(p.at)}</td>
                   <td>{p.series}</td>
@@ -698,8 +738,99 @@ export function ChartPanel({
               ))}
             </tbody>
           </table>
-        </div>
+        </div>}
       </details>
     </section>
+  );
+}
+
+function PublicActivity({ universeId, newTask }: {
+  universeId?: string | null;
+  newTask: (initial?: string) => void;
+}) {
+  const resource = useResource<Detail>(
+    universeId ? `game-intelligence?view=liveops&game=${encodeURIComponent(universeId)}` : null,
+  );
+  const { game, history } = resource.data ?? {};
+  const metrics = [
+    ["playing", "Players online"], ["visits", "Lifetime visits"],
+    ["favorites", "Favorites"], ["rating", "Like ratio"],
+  ] as const;
+  const series = (history ?? []).filter((entry) => entry.points.some((point) => point.playing !== null));
+  if (!universeId) return (
+    <section className="panel form">
+      <h3>Link a Roblox experience</h3>
+      <p>Add its universe ID under Games → Edit project to see public activity here.</p>
+      <Link href="/games" className="text-link">Manage projects <ArrowUpRight size={13} /></Link>
+    </section>
+  );
+  return (
+    <>
+    {resource.error && <Button variant="outline" onClick={resource.refresh}>Retry public activity</Button>}
+    <ResourceState loading={resource.loading} error={resource.error} variant="charts">
+      {game && (
+        <div className="v2-stack">
+          <section className="panel v2-source-banner">
+            <div>
+              <h3>{game.name}</h3>
+              <p>Source timestamps show when each public metric was collected. Peak players here is the highest comparable observation in a series.</p>
+            </div>
+            <Button variant="outline" onClick={resource.refresh}>Refresh public activity</Button>
+          </section>
+          <div className="overview-stats stats">
+            {metrics.map(([field, label]) => {
+              const value = game[field];
+              const source = game.metricSources[field];
+              return <div key={field}>
+                <span className="metric-label">{label}</span>
+                <strong>{value === null ? "—" : `${value.toLocaleString()}${field === "rating" ? "%" : ""}`}</strong>
+                {source ? (
+                  <a className="text-link" href={source.url} target="_blank" rel="noreferrer">
+                    {displayDate(new Date(source.at).toISOString())} <ArrowUpRight size={13} />
+                  </a>
+                ) : <small>Source did not report this metric</small>}
+              </div>;
+            })}
+          </div>
+          <div className="v2-chart-grid">
+            {series.map(({ name, url, points }) => {
+              const observations = points.flatMap(({ at, playing }) => playing === null ? [] : [{
+                at: new Date(at).toISOString(), value: playing, series: name, quality: name.includes("estimates") ? "May include estimates" : "Sampled",
+              }]);
+              const peak = observations.reduce((high, point) => Math.max(high, point.value), 0);
+              const latest = observations.at(-1)!;
+              return (
+                <div className="v2-stack" key={name}>
+                  <ChartPanel title="Players over time" unit="players" points={observations} attribution="Public observations" />
+                  <section className="panel form">
+                    <p>Highest observed count in {name}: <strong>{peak.toLocaleString()}</strong></p>
+                    {url && <a className="text-link" href={url} target="_blank" rel="noreferrer">Open data source <ArrowUpRight size={13} /></a>}
+                    {observations.length > 1 && (
+                      <Button variant="outline" size="sm" onClick={() => newTask(
+                        `Investigate public player activity for universe ${universeId}. ${name} shows ${observations[0].value} players at ${observations[0].at} and ${latest.value} at ${latest.at}. Highest observation in this window: ${peak}. ${url ? `Source: ${url}. ` : ""}Check data coverage, consider changes in traffic and releases, and recommend a measurement plan. Avoid inferring retention or causation from these counts.`,
+                      )}>Investigate player activity</Button>
+                    )}
+                  </section>
+                </div>
+              );
+            })}
+            {!series.length && <p>No player history available. Syntra records observations as public data is fetched.</p>}
+          </div>
+          <section className="panel form">
+            <h3>Server capacity and creator analytics</h3>
+            {game.serverCapacity ? (
+              <p>
+                Roblox reports a limit of <strong>{game.serverCapacity.value.toLocaleString()} players per server</strong>.{" "}
+                <a className="text-link" href={game.serverCapacity.source.url} target="_blank" rel="noreferrer">
+                  {displayDate(new Date(game.serverCapacity.source.at).toISOString())} <ArrowUpRight size={13} />
+                </a>
+              </p>
+            ) : <p>The source did not report a per-server player limit.</p>}
+            <p>DAU, retention, session length and paying-player metrics require an authorized export. Public feeds do not report live server occupancy, FPS, ping, joins, or drop-off.</p>
+          </section>
+        </div>
+      )}
+    </ResourceState>
+    </>
   );
 }

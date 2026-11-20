@@ -58,6 +58,13 @@ export function mergeGames(entries: Game[]) {
         current.metricSources[field] = incoming;
       }
     }
+    if (row.serverCapacity && (!current.serverCapacity || row.serverCapacity.source.at > current.serverCapacity.source.at))
+      current.serverCapacity = row.serverCapacity;
+    if (row.voteCounts && (!current.voteCounts ||
+      (row.voteCounts.source.provider === current.voteCounts.source.provider &&
+        row.voteCounts.source.at > current.voteCounts.source.at))) {
+      current.voteCounts = row.voteCounts;
+    }
     if (row.growthAt !== null && (current.growthAt === null || row.growthAt > current.growthAt)) {
       current.growth = row.growth;
       current.growthAt = row.growthAt;
@@ -106,7 +113,8 @@ function enrich(config: SourceSettings, ids: number[]) {
       const vote = byId.get(game.key);
       const approved = vote && normalize("roblox", { ...vote, name: game.name, placeId: game.placeId }, vote.at);
       return { ...game, icon: icons.get(game.key) ?? game.icon,
-        rating: approved ? approved.rating : game.rating,
+        rating: approved?.rating ?? game.rating,
+        voteCounts: approved?.voteCounts ?? game.voteCounts,
         metricSources: approved?.metricSources.rating ? { ...game.metricSources, rating: approved.metricSources.rating } : game.metricSources };
     });
   });
@@ -198,12 +206,13 @@ export async function searchGames(query: string) {
   return { games, sources: index.sources };
 }
 
-export async function gameDetail(key: string): Promise<Detail | null> {
+export async function gameDetail(key: string, { direct = false } = {}): Promise<Detail | null> {
   if (!/^(?:[1-9]\d{0,15}|bloxhub:[a-z0-9][a-z0-9-]{0,149})$/.test(key)) return null;
   const config = settings();
-  const index = await catalog();
-  const found = index.games.find(game => game.key === key);
-  const id = found?.universeId ?? count(key);
+  const requestedId = count(key);
+  const index = direct && requestedId ? null : await catalog();
+  const found = index?.games.find(game => game.key === key);
+  const id = found?.universeId ?? requestedId;
   const bloxSource = found?.sources.find(source => source.provider === "bloxhub");
   const bloxSlug = slug(bloxSource?.url.split("/").at(-1));
   const single = async (provider: Provider, endpoint: string) => cached(provider, endpoint, endpoint, config, (text, at) =>
@@ -213,8 +222,17 @@ export async function gameDetail(key: string): Promise<Detail | null> {
     id && !found ? single("gamestats", withPath("gamestats", `/api/v1/games/${id}`)) : null,
     bloxSlug ? single("bloxhub", withPath("bloxhub", `/api/v1/games/${bloxSlug}`)) : null,
   ]);
-  const game = mergeGames([...extra, ...(found ? [found] : []), ...(stats?.data ? [stats.data] : []), ...(blox?.data ? [blox.data] : [])])[0];
-  if (!game) return null;
+  const candidates = mergeGames([
+    ...extra,
+    ...(found ? [found] : []),
+    ...(stats?.data ? [stats.data] : []),
+    ...(blox?.data ? [blox.data] : []),
+  ]);
+  const matched = candidates.find(game => id ? game.universeId === id :
+    game.key === key || game.sources.some(source =>
+      source.provider === "bloxhub" && source.url.endsWith("/" + bloxSlug)));
+  if (!matched) return direct && requestedId ? gameDetail(key) : null;
+  const game = matched;
   observe([game]);
 
   const history: Series[] = [];

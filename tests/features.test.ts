@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
@@ -377,7 +377,7 @@ describe("Sourced studio intelligence", () => {
           },
         ],
       }),
-    ).toThrow("percentage");
+    ).toThrow(/percentage/i);
     features.featureAction("telemetry/import", {
       gameId: "game",
       source: market.source,
@@ -402,7 +402,7 @@ describe("Sourced studio intelligence", () => {
     const captured = Date.now();
     const observed = captured - 60_000;
     const first = normalize("roblox", {
-      id: 123, rootPlaceId: 1234, name: "Co-op delivery", playing: 0, visits: 4000, favoritedCount: 20,
+      id: 123, rootPlaceId: 1234, name: "Co-op delivery", playing: 0, visits: 4000, favoritedCount: 20, upVotes: 9, downVotes: 1,
     }, observed)!;
     const second = normalize("playsurge", {
       id: 124, name: "Flooded city", players: 250, slug: "flooded-city", change_24h: 0.15,
@@ -412,7 +412,7 @@ describe("Sourced studio intelligence", () => {
     const imported = features.featureAction("market/import", snapshot) as { id: string };
     expect(researchBrief(imported.id, "Study co-op")).toContain(imported.id);
     expect(features.readMarketEvidence(imported.id).games).toMatchObject([
-      { universeId: "123", players: 0, favorites: 20, provenance: { players: { url: "https://www.roblox.com/games/1234", at: new Date(observed).toISOString() } } },
+      { universeId: "123", players: 0, favorites: 20, likes: 9, votes: 10, provenance: { players: { url: "https://www.roblox.com/games/1234", at: new Date(observed).toISOString() } } },
       { universeId: "124", growth24h: 0.15 },
     ]);
     const plan = features.createRequest({
@@ -430,6 +430,73 @@ describe("Sourced studio intelligence", () => {
     const read = db.prepare("SELECT result FROM tool_calls WHERE task_id=? AND tool=? AND status='done'")
       .get(plan.taskId, "market_evidence_read") as { result: string };
     expect(JSON.parse(read.result)).toMatchObject({ id: imported.id, total: 2, games: [{ players: 0 }, { players: 250 }] });
+  });
+  it("lets Lead save direct public observations for a subsequent pitch", async () => {
+    const { settings, saveSettings } = await import("../src/game-intelligence/cache");
+    const config = settings();
+    saveSettings({
+      ...config, gamestats: { ...config.gamestats, enabled: false },
+      rowatcher: { ...config.rowatcher, enabled: false },
+      playsurge: { ...config.playsurge, enabled: false },
+    });
+    vi.stubGlobal("fetch", vi.fn(async (address: string) => {
+      const path = new URL(address).pathname;
+      if (path === "/v1/games") return Response.json({
+        data: [{ id: 905, rootPlaceId: 1234, name: "Delivery", playing: 42, visits: 120 }],
+      });
+      return Response.json({ data: [] });
+    }));
+    try {
+      const plan = features.createRequest({
+        gameId: "game", agent: "Lead", reviewPlan: true,
+        objective: calls([{ tool: "game_intelligence_save_evidence", arguments: { universeIds: ["905"] } }]),
+      });
+      await runtime.tick();
+      await settle();
+      const log = db.prepare("SELECT result FROM tool_calls WHERE task_id=? AND tool=? AND status='done'")
+        .get(plan.taskId, "game_intelligence_save_evidence") as { result: string };
+      expect(log).toBeTruthy();
+      const result = JSON.parse(log.result);
+      expect(result.evidence).toEqual([{ snapshotId: result.snapshotId, universeId: "905" }]);
+      expect(features.readMarketEvidence(result.snapshotId).games).toMatchObject([
+        { title: "Delivery", players: 42, provenance: { players: { url: "https://www.roblox.com/games/1234" } } },
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+      saveSettings(config);
+    }
+  });
+
+  it("resolves every attached snapshot without substituting the newest entry", () => {
+    const older = features.featureAction("market/import", market) as { id: string };
+    const newer = features.featureAction("market/import", {
+      ...market, fetchedAt: "2026-10-31T00:00:00Z",
+      games: [{ universeId: "123", title: "Renamed game", players: 200, likes: 80 }],
+    }) as { id: string };
+    const refs = [older, newer].map(({ id }) => ({ snapshotId: id, universeId: "123" }));
+    const pitch = features.savePitch({ title: "Delivery", hook: "A playable delivery loop", evidence: refs });
+    expect(features.featureRead("pitches/evidence", new URLSearchParams({ id: pitch.id }))).toMatchObject([
+      { snapshotId: older.id, quality: "exported", observation: { title: "Observed game", players: 100 } },
+      { snapshotId: newer.id, quality: "exported", observation: { title: "Renamed game", players: 200, likes: 80 } },
+    ]);
+  });
+
+  it("limits reusable project history to completed, accepted work in the current project", () => {
+    g("other-game");
+    const accepted = request("Lead");
+    const review = request("Lead");
+    const other = request("Lead", { gameId: "other-game" });
+    const acceptRun = db.prepare("UPDATE runs SET status='accepted' WHERE id=(SELECT run_id FROM tasks WHERE id=?)");
+    const complete = db.prepare("UPDATE tasks SET status='completed',result=? WHERE id=?");
+    acceptRun.run(accepted.taskId);
+    acceptRun.run(other.taskId);
+    for (const [item, note] of [[accepted, "Checkpoint uses CollectionService"], [review, "Unreviewed checkpoint"], [other, "Different checkpoint"]] as const) {
+      complete.run(note, item.taskId);
+    }
+    expect(features.readProjectHistory("game", "checkpoint")).toMatchObject([
+      { taskId: accepted.taskId, result: "Checkpoint uses CollectionService" },
+    ]);
+    expect(features.readProjectHistory("game", "unreviewed")).toEqual([]);
   });
   it("versions evidence-backed pitches and converts an accepted concept only once", () => {
     const m: any = features.featureAction("market/import", market);

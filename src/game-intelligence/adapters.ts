@@ -22,10 +22,6 @@ export function iconUrl(value: unknown) {
   } catch {}
   return "";
 }
-function rating(up: unknown, down: unknown) {
-  const a = count(up), b = count(down);
-  return a !== null && b !== null && a + b > 0 ? a / (a + b) * 100 : null;
-}
 export function normalize(provider: Provider, row: Row, at: number, rank?: [Category, number]): Game | null {
   const universeId = count(row.universeId ?? (provider === "bloxhub" ? null : row.id));
   const slugId = slug(row.slug);
@@ -51,14 +47,19 @@ export function normalize(provider: Provider, row: Row, at: number, rank?: [Cate
   const playing = count(row.playing ?? row.playerCount ?? row.players);
   const visits = count(row.visits);
   const favorites = count(row.favorites ?? row.favoritedCount);
-  const approval = rating(row.upVotes ?? row.totalUpVotes ?? (provider === "rowatcher" ? row.likes : null),
-    row.downVotes ?? row.totalDownVotes ?? row.dislikes) ?? (ratio !== null && ratio >= 0 && ratio <= 100 ? ratio : null);
+  const capacity = provider === "roblox" ? count(row.maxPlayers) : null;
+  const up = count(row.upVotes ?? row.totalUpVotes ?? (provider === "rowatcher" ? row.likes : null));
+  const down = count(row.downVotes ?? row.totalDownVotes ?? row.dislikes);
+  const total = up !== null && down !== null && Number.isSafeInteger(up + down) ? up + down : null;
+  const approval = up !== null && total ? up / total * 100 : ratio !== null && ratio >= 0 && ratio <= 100 ? ratio : null;
   return {
     key: universeId ? String(universeId) : "bloxhub:" + slugId, universeId, placeId, name,
     creator: (str(row.creator) || str(obj(row.creator).name) || str(row.creatorName)).slice(0, 200),
     genre: str(row.genre_l1 ?? row.genreL1 ?? row.category ?? row.genre).slice(0, 100),
     description: str(row.description).slice(0, 5000), icon: iconUrl(row.icon ?? row.iconUrl ?? row.thumb),
     playing, visits, favorites, rating: approval,
+    ...(capacity === null ? {} : { serverCapacity: { value: capacity, source } }),
+    ...(up !== null && total !== null ? { voteCounts: { up, total, source } } : {}),
     growth, growthAt: growth === null ? null : at, ...(growth === null ? {} : { growthSource: provider }),
     ranks, rankSources: Object.fromEntries(Object.keys(ranks).map(category => [category, provider])), sources: [source],
     metricSources: {

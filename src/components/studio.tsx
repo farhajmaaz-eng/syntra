@@ -507,6 +507,7 @@ export default function Studio({
                     codex:
                       "Run and review OpenAI Codex sessions in your local project.",
                     games: "Manage local Roblox Studio targets.",
+                    liveops: "Track public activity and review creator analytics for your games.",
                     "game-intelligence": "Explore public Roblox charts, metrics and history.",
                     reviews: "Approve tool calls and accept verified work.",
                     logs: "Inspect worker events and API usage.",
@@ -597,12 +598,14 @@ export default function Studio({
           />
         )}
         {page === "game-intelligence" && <GameIntelligence act={act} draft={openNewTask} busy={busy} />}
-        {data && page === "games" && (
+        {data && (page === "games" || page === "liveops") && (
           <>
-            <Link href="/game-intelligence" className="button button-outline">
-              <Gauge size={16} /> Browse Roblox Game Intelligence
+            <Link href={page === "liveops" ? "/games" : "/liveops"} className="button button-outline">
+              <Gauge size={16} /> {page === "liveops" ? "Manage projects" : "Open LiveOps"}
             </Link>
             <GameOps
+              key={page}
+              liveOps={page === "liveops"}
               data={data}
               selectedGame={selectedGame}
               chooseGame={chooseGame}
