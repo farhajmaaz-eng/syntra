@@ -17,11 +17,16 @@ export function migrateFeatures(db: Database.Database) {
         parent_task_id: "TEXT",
         stop_requested: "TEXT",
         requester: "TEXT NOT NULL DEFAULT 'Lead'",
+        execution_turn_id: "TEXT",
+        verification_status: "TEXT NOT NULL DEFAULT 'pending'",
+        verification_note: "TEXT NOT NULL DEFAULT ''",
+        verification_superseded: "INTEGER NOT NULL DEFAULT 0",
       },
       runs: {
         studio_pin_revision: "INTEGER NOT NULL DEFAULT 0",
         request_key: "TEXT",
         plan_status: "TEXT NOT NULL DEFAULT 'automatic'",
+        verification_status: "TEXT NOT NULL DEFAULT 'pending'",
       },
       agents: {
         provider_options: "TEXT NOT NULL DEFAULT '{}'",
@@ -42,6 +47,7 @@ export function migrateFeatures(db: Database.Database) {
         provider: "TEXT NOT NULL DEFAULT 'studio'",
         session_id: "TEXT",
         rpc_request_id: "TEXT",
+        permission_scope: "TEXT",
       },
     };
     for (const [table, fields] of Object.entries(columns)) {
@@ -55,6 +61,7 @@ export function migrateFeatures(db: Database.Database) {
           db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${sql}`);
     }
     db.exec(`
+      CREATE TABLE IF NOT EXISTS permission_grants(id TEXT PRIMARY KEY,scope TEXT NOT NULL UNIQUE,game_id TEXT NOT NULL,studio_id TEXT NOT NULL,agent TEXT NOT NULL,tool TEXT NOT NULL,created TEXT DEFAULT CURRENT_TIMESTAMP);
       CREATE TABLE IF NOT EXISTS studio_pin_changes(id TEXT PRIMARY KEY,game_id TEXT NOT NULL,old_studio_id TEXT NOT NULL,new_studio_id TEXT NOT NULL,details TEXT NOT NULL,created TEXT DEFAULT CURRENT_TIMESTAMP);
       CREATE TABLE IF NOT EXISTS studio_revisions(studio_id TEXT PRIMARY KEY,revision INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE IF NOT EXISTS studio_inspections(task_id TEXT NOT NULL,studio_id TEXT NOT NULL,revision INTEGER NOT NULL,PRIMARY KEY(task_id,studio_id));

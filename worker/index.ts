@@ -105,7 +105,7 @@ const timer = setInterval(() => {
   for (const c of wss.clients)
     if (c.readyState === 1) c.send('{"type":"refresh"}');
   interruptStopped();
-  if (!studio.client && !isConnecting() && !isMaintaining())
+  if (!isConnecting() && !isMaintaining())
     void studio.maintain().catch((e) => event(redact(e), "System", "error"));
   if (
     !ticking &&

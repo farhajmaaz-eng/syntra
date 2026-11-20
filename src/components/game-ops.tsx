@@ -43,6 +43,8 @@ export default function GameOps({
     [importing, setImporting] = useState<"csv" | "json" | null>(null),
     [discovery, setDiscovery] = useState<any>(null),
     [range, setRange] = useState("30");
+  const studios: { id: string; name: string; placeId: string; universeId: string }[] =
+    data.settings.studioDiscovery?.instances || [];
   const game = data.games.find((g: any) => g.id === selectedGame);
   const telemetry = useResource(
     game && liveOps && !["Public activity", "Fixes & Reports"].includes(tab) && !data.standaloneMode
@@ -471,22 +473,26 @@ export default function GameOps({
             onSubmit={async (e) => {
               e.preventDefault();
               const f = new FormData(e.currentTarget);
+              const studioId = f.get("studioId");
+              const studio = studios.find((item) => item.id === studioId);
+              const universeId = f.get("universeId") || studio?.universeId || "";
+              const placeId = f.get("placeId") || studio?.placeId || "";
               const out = await act(
                 edit ? "games/update" : "games",
                 edit
                   ? {
                       id: game.id,
                       name: f.get("name"),
-                      studioId: f.get("studioId"),
+                      studioId,
                       stage: f.get("stage"),
-                      universeId: f.get("universeId"),
-                      placeId: f.get("placeId"),
+                      universeId,
+                      placeId,
                     }
                   : {
                       name: f.get("name"),
-                      studioId: f.get("studioId"),
-                      universeId: f.get("universeId"),
-                      placeId: f.get("placeId"),
+                      studioId,
+                      universeId,
+                      placeId,
                     },
               );
               if (out) {
@@ -504,13 +510,20 @@ export default function GameOps({
               />
             </label>
             <label>
-              Studio instance ID
-              <input
-                name="studioId"
-                defaultValue={edit ? game.studio_id : ""}
-                placeholder="Optional for planning; required for Studio execution"
-              />
+              Roblox Studio window
+              <CustomSelect name="studioId" aria-label="Roblox Studio window" defaultValue={edit ? game.studio_id : ""}>
+                <option value="">Planning project</option>
+                {edit && game.studio_id && !studios.some((studio) => studio.id === game.studio_id) && (
+                  <option value={game.studio_id}>Current target · unavailable</option>
+                )}
+                {studios.map((studio) => (
+                  <option key={studio.id} value={studio.id}>
+                    {studio.name} · {studio.placeId ? `Place ${studio.placeId}` : studio.id}
+                  </option>
+                ))}
+              </CustomSelect>
             </label>
+            {!studios.length && <p>Enable Studio as an MCP server to see open places here.</p>}
             <>
               {edit && (
                 <label>

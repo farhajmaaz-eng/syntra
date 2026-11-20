@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, expect, it, vi } from "vitest";
 vi.setConfig({ testTimeout: 20000, hookTimeout: 20000 });
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 const dir = mkdtempSync(resolve(tmpdir(), "syntra-mcp-audit-"));
@@ -224,4 +224,51 @@ it("rejects stale agent edits after another agent changes the same Studio until 
     `${frame}:fresh-write`,
   );
   expect(JSON.parse(readFileSync(file, "utf8")).source).toBe("fresh");
+});
+
+
+it("shares concurrent startup and reconnects after an unexpected process exit", async () => {
+  await Promise.all([studio.connect(), studio.connect(), studio.maintain()]);
+  const first = studio.client;
+  expect(first).toBeTruthy();
+  await studio.connect();
+  expect(studio.client).toBe(first);
+  await expect(studio.call("Lead", "get_studio_state", { disconnect: true }, "test-studio", "owner")).rejects.toThrow();
+  expect(get("studioStatus")).toBe("disconnected");
+  const advanced = vi.spyOn(Date, "now").mockImplementation(() => new Date().getTime() + 2000);
+  try {
+    await studio.maintain();
+    expect(studio.client).not.toBe(first);
+    expect(get("studioStatus")).toBe("connected");
+  } finally {
+    advanced.mockRestore();
+  }
+  await studio.close();
+  await studio.maintain();
+  expect(studio.client).toBeNull();
+});
+
+it("polls multiple Studio windows and detects a closed instance without inventing IDs", async () => {
+  const inventory = resolve(dir, "inventory.json");
+  const first = { studio_id: "studio-one", name: "Published", place_id: 42, universe_id: 7 };
+  const second = { studio_id: "studio-two", name: "Unsaved" };
+  writeFileSync(inventory, JSON.stringify([first, second]));
+  set("mcpArgs", [resolve("tests/mcp-fixture.mjs"), inventory, "inventory"]);
+  db.prepare("INSERT INTO games(id,name,studio_id) VALUES ('poll-test','Published','studio-one')").run();
+  await studio.connect();
+  expect(get("studioDiscovery")).toMatchObject({ instances: [
+    { id: "studio-one", placeId: "42", universeId: "7" },
+    { id: "studio-two", placeId: "", universeId: "" },
+  ] });
+  expect(db.prepare("SELECT place_id,universe_id FROM games WHERE id='poll-test'").get()).toEqual({ place_id: "42", universe_id: "7" });
+  writeFileSync(inventory, JSON.stringify([second]));
+  const advanced = vi.spyOn(Date, "now").mockImplementation(() => new Date().getTime() + 16000);
+  try {
+    await studio.maintain();
+    expect(get("studioDiscovery")).toMatchObject({ instances: [{ id: "studio-two" }] });
+    expect(get("studioStatus")).toBe("connected");
+    expect(db.prepare("SELECT studio_id FROM games WHERE id='poll-test'").get()).toEqual({ studio_id: "studio-one" });
+  } finally {
+    advanced.mockRestore();
+  }
 });

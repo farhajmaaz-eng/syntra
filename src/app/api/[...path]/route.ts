@@ -43,6 +43,16 @@ async function handle(
   const joinedPath = path.join("/");
   const externalMode = process.env.WORKER_EXTERNAL === "1";
 
+  if (req.method === "POST") {
+    const origin = req.headers.get("origin");
+    const fetchSite = req.headers.get("sec-fetch-site");
+    const originHost = origin && URL.parse(origin)?.host;
+    if ((origin && originHost !== req.headers.get("host")) ||
+        (fetchSite && fetchSite !== "same-origin" && fetchSite !== "none")) {
+      return NextResponse.json({ error: "Open the Syntra workspace to change its state." }, { status: 403 });
+    }
+  }
+
   if (req.method === "GET" && joinedPath === "health" && !externalMode) {
     const service = await import("../../../../worker/service");
     service.ensureEmbeddedWorkerStarted();

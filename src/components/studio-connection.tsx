@@ -49,6 +49,10 @@ export default function StudioConnection({
     <section className="panel form">
       <h3>Studio connection</h3>
       <p>
+        Bridge {data.settings.studioStatus || "not configured"}
+        {data.settings.studioHealth?.checkedAt ? ` · Last checked ${new Date(data.settings.studioHealth.checkedAt).toLocaleTimeString()}` : ""}
+      </p>
+      <p>
         Project target: {game.studio_id || "Not assigned"}. Reconnecting
         refreshes available instances; existing runs switch only after your
         confirmation.
@@ -71,12 +75,13 @@ export default function StudioConnection({
       <div className="actions">
         <Button
           variant="outline"
-          disabled={busy || running}
+          disabled={busy || (data.settings.studioStatus !== "connected" && running)}
           onClick={async () => {
-            if (await act("connect", {})) await act("studios", {});
+            if (data.settings.studioStatus === "connected" || (await act("connect", {}))?.status === "connected")
+              await act("studios", {});
           }}
         >
-          Connect / refresh Studios
+          {data.settings.studioStatus === "connected" ? "Refresh Studios" : "Connect Studio"}
         </Button>
         <Link className="text-link" href="/settings">
           MCP command & reset settings
@@ -87,6 +92,8 @@ export default function StudioConnection({
           {data.settings.studioDiscoveryError}
         </p>
       )}
+      {data.settings.studioStatus === "connected" && data.settings.studioDiscovery && !instances.length &&
+        <p>No Studio windows are connected. Open the place and enable Studio as MCP server in Assistant.</p>}
       {!!instances.length && (
         <ul>
           {instances.map((s: any) => (
@@ -136,34 +143,23 @@ export default function StudioConnection({
           </CustomSelect>
         </label>
         <label>
-          New Roblox Studio instance ID
-          <input
+          Choose a discovered Studio
+          <CustomSelect
+            aria-label="Choose a discovered Studio"
             value={newId}
-            onChange={(e) => {
-              setNewId(e.target.value);
-              setPreview(null);
-            }}
-            placeholder="Paste a discovered Studio instance ID"
-            required
-            maxLength={200}
-            disabled={busy}
-            list={`studio-targets-${game.id}`}
-          />
+            onValueChange={(value) => { setNewId(value); setPreview(null); }}
+            disabled={busy || !instances.length}
+          >
+            <option value="">Select a Studio window</option>
+            {instances.filter((s: any) => s.id !== oldId).map((s: any) => (
+              <option key={s.id} value={s.id}>{s.name} · {s.placeId ? `Place ${s.placeId}` : "Place ID unavailable"} · {s.id}</option>
+            ))}
+          </CustomSelect>
         </label>
-        <datalist id={`studio-targets-${game.id}`}>
-          {instances.map((s: any) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </datalist>
         <small>
-          You can paste an ID manually. Switching existing work still requires a
-          fresh live discovery check, matching place identity when reported, and
-          confirmation. Pending Studio calls/approvals are withdrawn; completed
-          evidence is retained. The team stays paused.
+          Syntra checks the selected window against the project. Existing runs only move after you confirm the switch.
         </small>
-        <Button disabled={busy || running}>Review Studio switch</Button>
+        <Button disabled={busy || running || !instances.some((s: any) => s.id === newId)}>Review Studio switch</Button>
       </form>
       {result && <p role="status">{result}</p>}
       {preview && (

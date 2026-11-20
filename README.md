@@ -28,10 +28,10 @@ For a first request, try “Add a server-side checkpoint system to my obby. Keep
 ## Connect Roblox Studio
 
 1. Open your place in Roblox Studio and [enable the official Studio MCP server](https://create.roblox.com/docs/studio/mcp).
-2. Open **Settings → Roblox Studio connection** in Syntra. Enter the command and arguments supplied by Roblox Studio, save them, then choose **Connect / reconnect**.
-3. In **Games**, use **Discover Studios**, then add or update your project with the returned Studio ID. If Studio restarts and the ID changes, use **Review Studio switch** to confirm the replacement.
+2. Open **Settings → Roblox Studio connection** and choose **Use installed Roblox Studio**. Syntra looks for the official bridge on the worker machine. If Studio is installed elsewhere, enter the command and arguments supplied by Studio, save them, and choose **Connect / reconnect**.
+3. In **Games**, choose a Studio window when adding or editing a project. Syntra fills in place and universe IDs when Studio reports them. If Studio restarts with a new instance ID, choose the replacement in **Review Studio switch** and confirm the target for existing runs.
 
-See [Studio connection recovery](docs/STUDIO_CONNECTION_RECOVERY.md) if a connection changes during a run.
+See [Studio connection recovery](docs/STUDIO_CONNECTION_RECOVERY.md) for connection health, permissions, and unfinished verification.
 
 ## What’s in the workspace
 

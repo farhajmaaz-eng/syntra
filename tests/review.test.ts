@@ -70,11 +70,13 @@ it("limits batch groups to pending approvals belonging to the same game, agent, 
       { id: "a3", task_id: "t2", tool: "multi_edit", status: "pending" },
       { id: "a4", task_id: "t1", tool: "multi_edit", status: "approved" },
       { id: "a5", task_id: "t1", tool: "insert_asset", status: "pending" },
+      { id: "a6", task_id: "t1", tool: "multi_edit", status: "pending" },
     ],
   };
   const groups = approvalGroups(data);
-  expect(groups).toHaveLength(3);
-  expect(groups[0].items.map((item) => item.id)).toEqual(["a1", "a2"]);
-  expect(groups[1].subtitle).toBe("Second game · Builder");
-  expect(groups[2].title).toBe("Asset changes");
+  expect(groups).toHaveLength(4);
+  expect(groups[0].items.map((item) => item.id)).toEqual(["a1", "a6"]);
+  expect(groups[1].items.map((item) => item.id)).toEqual(["a2"]);
+  expect(groups[2].subtitle).toBe("Second game · Builder");
+  expect(groups[3].title).toBe("Asset changes");
 });

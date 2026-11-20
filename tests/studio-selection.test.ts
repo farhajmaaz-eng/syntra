@@ -396,7 +396,7 @@ it("executes a queued task only against the confirmed new target and never repla
   expect(
     db
       .prepare(
-        "SELECT studio_id,pin_revision FROM tool_calls WHERE id='task:fresh-read'",
+        "SELECT studio_id,pin_revision FROM tool_calls WHERE task_id='task' AND id= 'task:' || (SELECT execution_turn_id FROM tasks WHERE id='task') || ':fresh-read'",
       )
       .get(),
   ).toEqual({ studio_id: newId, pin_revision: 1 });
@@ -535,8 +535,9 @@ it("cannot reuse verification evidence from the previous pinned session", async 
     await runtime.tick();
     await idle();
   }
-  expect(task("task").status).toBe("failed");
-  expect(task("task").error).toMatch(/Verification requires|verify verdict/i);
+  expect(task("task").status).toBe("completed");
+  expect(task("task").verification_status).toBe("incomplete");
+  expect(task("task").verification_note).toMatch(/Verification requires/i);
   expect(task("task").result).not.toContain("VERIFIED:");
   set("paused", true);
 });

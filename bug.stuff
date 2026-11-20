@@ -1,0 +1,240 @@
+Syntra Core Reliability & UX Overhaul
+
+You are working on Syntra, a multi-agent AI development environment with 8 agents, MCP integrations, Roblox Studio integration, a React/TypeScript frontend, and a Rust/Tauri desktop application.
+
+Your task is to audit and substantially improve Syntra's reliability, usability, connection management, permissions, and agent orchestration.
+
+This is an engineering task, not a UI redesign. Preserve the existing visual identity, layout, functionality, and architecture wherever possible.
+
+1. Start with a complete audit
+
+Inspect the entire codebase before making changes.
+
+Identify:
+
+- How agents are created, scheduled, interrupted, and terminated.
+- How Lead, Builder, Tester, and other agents communicate.
+- How task states and completion verdicts are determined.
+- How MCP connections are established and maintained.
+- How permissions and approval requests work.
+- How Roblox Studio instances and sessions are discovered.
+- How the desktop and web versions communicate with the backend.
+
+Identify actual bugs before proposing architectural changes. Do not assume every reported issue has the same cause.
+
+2. MCP connection management
+
+Build a reliable centralized MCP connection manager.
+
+Requirements:
+
+- Automatically start configured MCP servers.
+- Support connection health checks and status monitoring.
+- Automatically reconnect after unexpected disconnections.
+- Handle process crashes and timeouts.
+- Prevent duplicate server processes and connections.
+- Preserve connection state where possible.
+- Provide clear connection diagnostics.
+- Allow users to configure and manage integrations from the existing UI.
+- Avoid requiring users to manually retrieve IDs or configure unnecessary parameters.
+
+Roblox Studio integration
+
+Make Roblox Studio integration as seamless as possible.
+
+- Discover running Studio instances automatically.
+- Retrieve and manage studio_id, place_id, and universe_id where available.
+- Automatically inject the appropriate studio_id into tool calls.
+- Handle multiple Studio instances.
+- Detect when an instance closes or becomes unavailable.
+- Reconnect when Studio becomes available again.
+- Maintain the active instance selection.
+- Clearly distinguish unavailable metadata from actual connection failures.
+
+Do not invent identifiers or assume Roblox exposes information that it does not.
+
+3. Permission system overhaul
+
+Replace confusing raw JSON approval prompts with a human-readable permission interface.
+
+Implement three configurable permission levels:
+
+Read operations
+
+- Inspect objects, hierarchy, properties, positions, scripts, and project information.
+- Automatically allowed by default within an explicitly connected workspace.
+
+Write operations
+
+- Modify scripts, objects, properties, and project files.
+- Allow trusted operations according to user-configured workspace permissions.
+
+Destructive operations
+
+- Delete significant project content.
+- Publish experiences.
+- Perform irreversible actions.
+- Require explicit confirmation by default.
+
+Additional requirements:
+
+- Remember user-approved permissions according to their selected policy.
+- Avoid repeatedly requesting approval for identical permitted operations.
+- Display the agent, requested action, affected resource, and consequences.
+- Provide Allow Once, Always Allow, and Deny where appropriate.
+- Make permissions scoped, revocable, and auditable.
+- Never silently escalate permissions.
+
+4. Agent orchestration reliability
+
+This is one of the highest priorities.
+
+Fix:
+
+- Incorrect task completion states.
+- Missing or unrecognized completion events.
+- Duplicate interrupts.
+- Late events attaching to incorrect tasks.
+- Workers blocking unrelated scheduling.
+- Lost agent outputs.
+- Incorrect Lead-to-worker handoffs.
+- Tasks being marked failed after successful execution.
+
+Implement:
+
+- Persistent task IDs and execution states.
+- Reliable event correlation.
+- Structured agent completion responses.
+- Cancellation and timeout handling.
+- Recovery from interrupted executions.
+- Accurate execution and verification statuses.
+
+IMPORTANT:
+
+Execution success and verification success must be separate states.
+
+For example:
+
+- Builder successfully modifies files.
+- Tester cannot execute Roblox runtime tests.
+- Syntra must report that implementation succeeded but runtime verification remains incomplete.
+
+Do not classify this as an implementation failure.
+
+Never fabricate passing test results.
+
+5. Agent communication and scheduling
+
+Ensure all 8 agents can operate reliably.
+
+- Improve task delegation.
+- Preserve context across agent handoffs.
+- Prevent duplicate work.
+- Allow independent workers to execute concurrently when safe.
+- Avoid unnecessary delegation for simple tasks.
+- Ensure worker failures are communicated to the Lead.
+- Support retries without repeating completed work.
+- Ensure active tasks survive recoverable connection interruptions.
+
+6. Diagnostics and observability
+
+Create a useful debugging system.
+
+Expose:
+
+- Agent execution timelines.
+- MCP connection status.
+- Tool calls and their results.
+- Task lifecycle transitions.
+- Permission decisions.
+- Error messages and stack traces where appropriate.
+- Failed and incomplete verification steps.
+
+Replace opaque JSON errors with readable explanations while retaining access to technical details for debugging.
+
+7. Desktop and web consistency
+
+Maintain one shared React/TypeScript frontend and shared application logic wherever possible.
+
+For Tauri Desktop:
+
+- Improve local MCP process management.
+- Improve filesystem access.
+- Ensure background tasks remain reliable.
+- Integrate cleanly with the Rust backend.
+- Preserve user data and local databases.
+
+For Web:
+
+- Preserve existing functionality.
+- Clearly communicate which integrations require the desktop runtime.
+- Support remote monitoring where the architecture permits.
+- Do not pretend browser-only sessions have local desktop access.
+
+Do not duplicate the entire application or maintain two independent orchestration implementations.
+
+8. Testing requirements
+
+Add automated tests for:
+
+- MCP connection startup and shutdown.
+- Unexpected disconnections and reconnections.
+- Multiple Studio instances.
+- Permission persistence.
+- Permission revocation.
+- Agent completion events.
+- Task state transitions.
+- Duplicate interrupt prevention.
+- Late event correlation.
+- Builder success followed by Tester failure.
+- Concurrent agent scheduling.
+- Application restart and recovery.
+
+Use mocked MCP servers and deterministic test fixtures wherever real external services are unavailable.
+
+Do not modify connected Roblox experiences during testing without explicit user confirmation.
+
+9. Development constraints
+
+- Inspect existing implementations before replacing anything.
+- Preserve working functionality.
+- Avoid unnecessary dependencies.
+- Avoid introducing heavyweight infrastructure.
+- Keep local resource consumption reasonable.
+- Preserve the current Syntra design.
+- Do not rewrite working modules merely for architectural preference.
+- Never silently remove features.
+- Do not fake integrations or test results.
+
+10. Execution strategy
+
+Work in phases:
+
+1. Audit and document the existing architecture.
+2. Identify and fix critical orchestration bugs.
+3. Fix MCP lifecycle and connection management.
+4. Improve Roblox Studio discovery and integration.
+5. Implement the permission system.
+6. Improve diagnostics.
+7. Add automated regression tests.
+8. Verify desktop and web builds.
+
+After each phase:
+
+- Run relevant tests.
+- Report modified files.
+- Report exact commands executed.
+- Report passing and failing tests.
+- Document outstanding limitations.
+
+Do not stop after writing an audit report. Implement the fixes.
+
+If a major architectural change is necessary, explain why before making potentially destructive changes.
+
+Definition of done
+
+Syntra should feel like a cohesive development application rather than a collection of manually configured agents and integrations.
+
+A user should be able to open Syntra, connect Roblox Studio, select an experience, give an instruction, and let the agents work without repeatedly managing MCP connections, retrieving IDs, or approving ordinary read operations.
+
+Prioritize reliability, predictable behavior, and ease of use over adding new features.

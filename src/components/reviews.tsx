@@ -24,7 +24,8 @@ import {
 import { UsagePanel } from "./workspace-shell";
 import { Avatar } from "./agent-avatar";
 import { approvalGroups, formatPayload, reviewImages } from "@/lib/review";
-import { operationRisk, displayDate } from "@/lib/feature-contracts";
+import { approvalRisk, describeApproval } from "@/lib/approval-display";
+import { displayDate } from "@/lib/feature-contracts";
 import AssetLibrary from "./asset-library";
 import ReviewViewer from "./review-viewer";
 
@@ -129,6 +130,7 @@ export default function Reviews({
     items: any[],
     approved: boolean,
     requestChanges = false,
+    remember = false,
   ) {
     setBatchPending(true);
     setBatchNotice("");
@@ -142,7 +144,7 @@ export default function Reviews({
             id: item.id,
             approved,
             ...(selected?.id === item.id
-              ? { note: reviewNote, authorized, requestChanges }
+              ? { note: reviewNote, authorized, requestChanges, remember }
               : {}),
           }))
         )
@@ -267,10 +269,10 @@ export default function Reviews({
                     size="sm"
                     disabled={
                       disabled ||
-                      group.items.some((a: any) => !!operationRisk(a.tool))
+                      group.items.some((a: any) => !!approvalRisk(a))
                     }
                     title={
-                      group.items.some((a: any) => !!operationRisk(a.tool))
+                      group.items.some((a: any) => !!approvalRisk(a))
                         ? "Review high-risk operations individually to authorize them"
                         : "Approve this pending group"
                     }
@@ -316,7 +318,7 @@ export default function Reviews({
                                 Proposed change
                               </span>
                             </div>
-                            <pre>{formatPayload(a.args)}</pre>
+                            <p>{describeApproval(a).action} · {describeApproval(a).resource}</p>
                             <span className="preview-open">
                               Inspect full arguments <ArrowUpRight size={13} />
                             </span>
@@ -350,7 +352,7 @@ export default function Reviews({
                             size="sm"
                             disabled={disabled}
                             onClick={() =>
-                              operationRisk(a.tool)
+                              approvalRisk(a)
                                 ? openReview("approval", a.id)
                                 : void decide([a], true)
                             }
@@ -454,7 +456,7 @@ export default function Reviews({
                   </h2>
                   <span className="review-subtitle">
                     {status === "review"
-                      ? "Verified by your team"
+                      ? "Review implementation and test results"
                       : "Review history"}
                   </span>
                   <span className="group-count">{runs.length}</span>
@@ -492,7 +494,7 @@ export default function Reviews({
                               </span>
                               <p>
                                 {testers
-                                  .map((t: any) => t.result)
+                                  .map((t: any) => t.verification_note || t.error || t.result)
                                   .filter(Boolean)
                                   .join("\n") ||
                                   "Open this review to inspect the team’s deliverables."}
@@ -608,8 +610,11 @@ export default function Reviews({
                   </Link>
                 </div>
               )}
-              <h3>{selectedItem.tool} · exact arguments</h3>
-              <pre>{formatPayload(selectedItem.args)}</pre>
+              <h3>{describeApproval(selectedItem).action}</h3>
+              <p>{task?.agent || "Codex"} · {describeApproval(selectedItem).resource}</p>
+              <p>{describeApproval(selectedItem).effect}</p>
+              {describeApproval(selectedItem).detail && <p>{describeApproval(selectedItem).detail}</p>}
+              <details><summary>Technical details</summary><pre>{formatPayload(selectedItem.args)}</pre></details>
               {selectedItem.status === "pending" && (
                 <div className="form">
                   <label>
@@ -621,21 +626,20 @@ export default function Reviews({
                       placeholder="Optional for approval or rejection; required for changes"
                     />
                   </label>
-                  {operationRisk(selectedItem.tool) && (
+                  {approvalRisk(selectedItem) && (
                     <label className="checkbox">
                       <input
                         type="checkbox"
                         checked={authorized}
                         onChange={(e) => setAuthorized(e.target.checked)}
                       />
-                      I authorize this {operationRisk(selectedItem.tool)} with
+                      I authorize this {approvalRisk(selectedItem)} with
                       the exact arguments shown above.
                     </label>
                   )}
-                  <small>
-                    Approving a tool call grants permission only for that call.
-                    It is not general publishing permission.
-                  </small>
+                  {selectedItem.permission_scope && <small>
+                    Always Allow applies to these exact arguments for this agent and pinned project. Revoke saved permissions in Settings.
+                  </small>}
                 </div>
               )}
               {selectedItem.status === "pending" && (
@@ -646,7 +650,7 @@ export default function Reviews({
                     onClick={() => setRejection([selectedItem])}
                   >
                     <X size={14} />
-                    Reject change
+                    Deny
                   </Button>
                   <Button
                     variant="outline"
@@ -660,18 +664,30 @@ export default function Reviews({
                     variant="outline"
                     disabled={
                       disabled ||
-                      (!!operationRisk(selectedItem.tool) && !authorized)
+                      (!!approvalRisk(selectedItem) && !authorized)
                     }
                     onClick={() => void decide([selectedItem], true)}
                   >
                     <Check size={14} />
-                    Approve change
+                    Allow once
                   </Button>
+                  {selectedItem.permission_scope && (
+                    <Button variant="outline" disabled={disabled} onClick={() => void decide([selectedItem], true, false, true)}>
+                      Always allow these details
+                    </Button>
+                  )}
                 </div>
               )}
             </>
           ) : (
             <>
+              <p>
+                Verification {selectedItem.verification_status === "not_required" ? "was not required"
+                  : selectedItem.verification_status === "passed" ? "passed"
+                  : selectedItem.verification_status === "failed" ? "failed"
+                  : selectedItem.verification_status === "incomplete" ? "is incomplete"
+                  : "evidence is listed below"}.
+              </p>
               {runTasks.map((t: any) => (
                 <section className="review-deliverable" key={t.id}>
                   <h3>
@@ -679,6 +695,8 @@ export default function Reviews({
                     {t.agent} · {t.title}
                   </h3>
                   <p>{t.instructions}</p>
+                  {t.verification_note && <p>{t.verification_note}</p>}
+                  {t.error && <p role="status">{t.error}</p>}
                   <pre>{formatPayload(t.result || "No result recorded.")}</pre>
                   <Link
                     className="text-link"
@@ -721,6 +739,20 @@ export default function Reviews({
                       rows={2}
                     />
                   </label>
+                  {["incomplete", "failed"].includes(selectedItem.verification_status) && (
+                    <div className="actions">
+                      <Button type="button" variant="outline" disabled={disabled}
+                        onClick={async () => {
+                          if (await mutate("runs/retry-verification", { id: selectedItem.id })) setSelected(null);
+                        }}>
+                        Retry verification
+                      </Button>
+                      <label className="checkbox">
+                        <input type="checkbox" checked={authorized} onChange={(event) => setAuthorized(event.target.checked)} />
+                        Accept with unresolved verification
+                      </label>
+                    </div>
+                  )}
                   <div className="drawer-actions">
                     <Button variant="outline" disabled={disabled}>
                       Request changes
@@ -735,6 +767,7 @@ export default function Reviews({
                           await mutate("review", {
                             id: selectedItem.id,
                             accepted: true,
+                            acceptIncomplete: authorized,
                             ...(reviewNote ? { feedback: reviewNote } : {}),
                           })
                         )

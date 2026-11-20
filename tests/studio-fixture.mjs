@@ -29,8 +29,8 @@ server.registerTool(
 );
 server.registerTool(
   "start_stop_play",
-  { inputSchema: { studio_id: z.string(), start: z.boolean() } },
-  async ({ start }) => text({ playing: start }),
+  { inputSchema: { studio_id: z.string(), is_start: z.boolean() } },
+  async ({ is_start }) => text({ playing: is_start }),
 );
 server.registerTool(
   "get_console_output",

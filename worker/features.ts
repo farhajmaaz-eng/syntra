@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 import { z } from "zod";
 import { db, get, set, task, addTask, event, dataDir } from "./store";
 import { codex } from "./codex";
+import { approvalRisk, canRememberApproval } from "../src/lib/approval-display";
+import { auditPermission, studioApprovalScope } from "./permissions";
 import { resolveToolApproval } from "./tool-approvals";
 import { roles } from "../src/lib/roles";
 import {
@@ -13,7 +15,6 @@ import {
   telemetrySchema,
   pitchSchema,
   webUrl,
-  operationRisk,
 } from "../src/lib/feature-contracts";
 const role = z.enum(Object.keys(roles) as [string, ...string[]]);
 const identifier = z.string().min(1).max(200);
@@ -166,6 +167,9 @@ export function taskDetail(id: string) {
     approvals: db
       .prepare("SELECT * FROM approvals WHERE task_id=? ORDER BY rowid")
       .all(id),
+    timeline: db.prepare(`SELECT e.type,e.created,e.turn_id FROM codex_events e
+      JOIN codex_sessions s ON s.id=e.session_id WHERE s.task_id=?
+      AND e.type IN ('turn/started','turn/completed','error','thread/closed') ORDER BY e.id DESC LIMIT 50`).all(id),
     assets: (
       db
         .prepare("SELECT * FROM assets WHERE task_id=? ORDER BY rowid DESC")
@@ -180,6 +184,7 @@ export function decideApproval(body: unknown) {
       approved: z.boolean(),
       note: z.string().max(12000).default(""),
       authorized: z.boolean().default(false),
+      remember: z.boolean().default(false),
       requestChanges: z.boolean().default(false),
     })
     .parse(body);
@@ -192,6 +197,11 @@ export function decideApproval(body: unknown) {
     if (approval.status === status) return { ok: true, duplicate: true };
     if (approval.status !== "pending")
       throw new Error("Approval is no longer pending");
+    const risk = approvalRisk(approval);
+    if (a.remember && (!a.approved || !canRememberApproval(approval) || !approval.permission_scope))
+      throw new Error("This operation can only be reviewed once.");
+    if (a.approved && risk && !a.authorized)
+      throw new Error(`Explicit authorization is required for this ${risk}`);
     if (approval.provider === "codex") {
       if (!codex.resolveApproval(approval.id, a.approved, a.note))
         throw new Error("This Codex approval is no longer waiting");
@@ -216,12 +226,17 @@ export function decideApproval(body: unknown) {
       return { ok: true };
     }
     const { t, run } = runForTask(approval.task_id);
-    if (run.status === "cancelled" || t.status === "cancelled")
-      throw new Error("This work has been cancelled");
-    if (a.approved && operationRisk(approval.tool) && !a.authorized)
-      throw new Error(
-        `Explicit authorization is required for this ${operationRisk(approval.tool)}`,
-      );
+    if (a.approved && (run.status !== "active" || t.stop_requested || ["cancelled", "paused"].includes(t.status)))
+      throw new Error("Resume this work before allowing changes.");
+    if (a.remember) {
+      const scope = studioApprovalScope(run, t.agent, approval.tool, JSON.parse(approval.args));
+      if (!scope || scope !== approval.permission_scope || JSON.parse(approval.args).studio_id !== run.studio_id)
+        throw new Error("The permission scope changed. Open the latest approval.");
+      const id = randomUUID();
+      const inserted = db.prepare(`INSERT OR IGNORE INTO permission_grants(id,scope,game_id,studio_id,agent,tool)
+        VALUES (?,?,?,?,?,?)`).run(id, scope, run.game_id, run.studio_id, t.agent, approval.tool);
+      if (inserted.changes) auditPermission(id, "granted", `Exact ${approval.tool} request approved for ${t.agent}.`);
+    }
     if (a.requestChanges && (a.approved || a.note.trim().length < 5))
       throw new Error("Describe the requested changes before sending feedback");
     db.prepare(
@@ -257,6 +272,7 @@ export function decideRun(body: unknown) {
       id: identifier,
       accepted: z.boolean(),
       feedback: z.string().max(12000).default(""),
+      acceptIncomplete: z.boolean().default(false),
     })
     .parse(body);
   return db.transaction(() => {
@@ -264,6 +280,8 @@ export function decideRun(body: unknown) {
     if (r?.status === "accepted" && a.accepted)
       return { ok: true, duplicate: true };
     if (r?.status !== "review") throw new Error("Run is not ready for review");
+    if (a.accepted && ["failed", "incomplete"].includes(r.verification_status) && !a.acceptIncomplete)
+      throw new Error("Acknowledge the failed or incomplete verification before accepting.");
     let revision: string | null = null;
     if (a.accepted)
       db.prepare("UPDATE runs SET status='accepted' WHERE id=?").run(a.id);
@@ -998,6 +1016,29 @@ export function featureAction(
     }
     changed();
     return { id };
+  }
+  if (path === "runs/retry-verification") {
+    const { id } = z.object({ id: identifier }).parse(body);
+    return db.transaction(() => {
+      const run = db.prepare("SELECT * FROM runs WHERE id=?").get(id) as any;
+      if (run?.status !== "review" || !["failed", "incomplete"].includes(run.verification_status))
+        throw new Error("This run does not have unresolved verification.");
+      const deps = (db.prepare("SELECT id FROM tasks WHERE run_id=?").all(id) as { id: string }[]).map(row => row.id)
+        .filter(taskId => task(taskId)?.status === "completed" && task(taskId)?.agent !== "Tester");
+      db.prepare("UPDATE tasks SET verification_superseded=1 WHERE run_id=? AND agent='Tester'").run(id);
+      const taskId = addTask(id, "Tester", "Retry verification", "Verify the existing implementation. Report failed checks or explain what still cannot run.", deps);
+      db.prepare("UPDATE runs SET status='active',verification_status='pending' WHERE id=?").run(id);
+      audit("run", id, "verification_retry", "", taskId);
+      return { ok: true, taskId };
+    })();
+  }
+  if (path === "permissions/revoke") {
+    const { id } = z.object({ id: identifier }).parse(body);
+    return db.transaction(() => {
+      const removed = db.prepare("DELETE FROM permission_grants WHERE id=?").run(id);
+      if (removed.changes) auditPermission(id, "revoked", "User revoked the saved permission.");
+      return { ok: true };
+    })();
   }
   if (path === "pitches/save") return savePitch(body);
   if (path === "pitches/decision") {

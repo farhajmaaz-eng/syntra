@@ -188,7 +188,8 @@ describe("Persistent Codex workflow", () => {
         expect(approval.args).toContain("test-studio");
         expect(approval.args).toContain("Fixture HUD");
         expect(() => readFileSync(process.env.FIXTURE_PLACE! + ".graphics")).toThrow();
-        features.decideApproval({ id: approval.id, approved: true, note: "Fixture import approved" });
+        expect(() => features.decideApproval({ id: approval.id, approved: true })).toThrow("Explicit authorization");
+        features.decideApproval({ id: approval.id, approved: true, authorized: true, note: "Fixture import approved" });
       }
       await new Promise(resolve => setTimeout(resolve, 20));
     }

@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import {
   StdioClientTransport,
@@ -5,7 +7,8 @@ import {
 } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
 import { db, get, set, event, task } from "./store";
-import { permissions, isMutation, type Role } from "../src/lib/roles";
+import { studioReads } from "../src/lib/approval-display";
+import { permissions, type Role } from "../src/lib/roles";
 import { OperationError, redact } from "./errors";
 export class StudioCallError extends OperationError {}
 export function expandEnvironment(
@@ -27,6 +30,14 @@ export function expandEnvironment(
     },
   );
 }
+export function installedStudioBridge(platform = process.platform, env = process.env) {
+  if (platform === "win32" && env.LOCALAPPDATA && existsSync(join(env.LOCALAPPDATA, "Roblox", "mcp.bat")))
+    return { command: "cmd.exe", args: ["/c", "%LOCALAPPDATA%\\Roblox\\mcp.bat"] };
+  const mac = "/Applications/RobloxStudio.app/Contents/MacOS/StudioMCP";
+  if (platform === "darwin" && existsSync(mac)) return { command: mac, args: [] };
+  return null;
+}
+
 export type StudioInstance = {
   id: string;
   name: string;
@@ -56,7 +67,7 @@ export function studioInstances(result: any): StudioInstance[] | null {
       const id = item.studio_id || item.studioId || item.id;
       if (typeof id !== "string" || !id.trim() || id.length > 200) return null;
       const numeric = (v: any) =>
-        v == null || String(v) === "0"
+        v == null || String(v) === "0" || (typeof v === "number" && !Number.isSafeInteger(v))
           ? ""
           : /^\d+$/.test(String(v))
             ? String(v)
@@ -112,6 +123,11 @@ export class Studio {
   private connecting: Promise<void> | null = null;
   private nextReconnect = 0;
   private reconnectAttempts = 0;
+  private configuration = "";
+  private discovery: { client: Client; request: ReturnType<Studio["readDiscovery"]> } | undefined;
+  private nextHealth = 0;
+  private probing = false;
+  private activeCalls = 0;
   private stopped = false;
   get isConnecting() {
     return this.connecting !== null;
@@ -124,13 +140,19 @@ export class Studio {
   async connect() {
     if (this.connecting) return this.connecting;
     this.stopped = false;
-    this.connecting = this.open().finally(() => {
+    const configuration = this.configuredCommand();
+    if (this.client && this.configuration === configuration) return;
+    this.connecting = this.open(configuration).finally(() => {
       this.connecting = null;
     });
     return this.connecting;
   }
-  private async open() {
+  private configuredCommand() {
+    return JSON.stringify([get("mcpCommand"), get("mcpArgs")]);
+  }
+  private async open(configuration: string) {
     await this.close(false);
+    if (this.stopped) return;
     const configured = get<string>("mcpCommand");
     if (!configured) {
       set("studioStatus", "not configured");
@@ -148,7 +170,6 @@ export class Studio {
               onChanged: (error, tools) => {
                 if (this.client !== client) return;
                 if (error) {
-                  this.clearTools();
                   event(
                     `Studio tool refresh failed: ${redact(error)}`,
                     "System",
@@ -182,11 +203,13 @@ export class Studio {
       client.onclose = () => {
         if (this.client !== client) return;
         this.client = null;
+        this.nextReconnect = Date.now() + 1500;
+        set("studioHealth", { lastFailureAt: Date.now(), retryAt: this.nextReconnect });
         this.clearTools();
         set("studioStatus", "disconnected");
         set(
           "studioError",
-          "Studio MCP disconnected. Reopen Studio, enable its MCP server and reconnect. Pending writes will not be replayed.",
+          "Studio MCP disconnected. Syntra will retry. Keep Studio open with its MCP server enabled.",
         );
       };
       client.onerror = (error) =>
@@ -196,14 +219,22 @@ export class Studio {
       });
       const discovered: any[] = [];
       let cursor: string | undefined;
+      const seen = new Set<string>();
       do {
         const page = await client.listTools({ cursor }, { timeout: 20000 });
         discovered.push(...page.tools);
         cursor = page.nextCursor;
+        if (cursor && (seen.has(cursor) || seen.size >= 30))
+          throw new StudioCallError("Studio returned an invalid tool pagination cursor");
+        if (cursor) seen.add(cursor);
         if (discovered.length > 2000)
           throw new StudioCallError("Studio advertised too many tools");
       } while (cursor);
+      if (this.client !== client || this.stopped) return;
+      this.configuration = configuration;
       this.tools = discovered;
+      set("studioHealth", { checkedAt: Date.now() });
+      this.nextHealth = Date.now() + 15000;
       set("studioTools", this.tools);
       set("studioStatus", "connected");
       set("studioError", "");
@@ -214,13 +245,16 @@ export class Studio {
           set("studioDiscoveryError", redact(error)),
         );
     } catch (error) {
+      if (this.stopped) return;
       await this.close(false);
+      if (this.stopped) return;
       this.reconnectAttempts++;
       this.nextReconnect =
         Date.now() +
         Math.min(60000, 2000 * 2 ** Math.min(this.reconnectAttempts, 5));
       const message = `Studio connection failed: ${redact(error)}. Check MCP executable/arguments, enable Studio as MCP server and keep Studio open.`;
       set("studioStatus", "error");
+      set("studioHealth", { lastFailureAt: Date.now(), retryAt: this.nextReconnect });
       set("studioError", message);
       event(message, "System", "error");
     }
@@ -228,9 +262,18 @@ export class Studio {
   async discover() {
     const client = this.client;
     if (!client || !this.tools.some((t) => t.name === "list_roblox_studios"))
-      throw new StudioCallError(
-        "Connect Studio MCP before discovering instances",
-      );
+      throw new StudioCallError("Connect Studio MCP before discovering instances");
+    if (this.discovery?.client === client) return this.discovery.request;
+    const request = this.readDiscovery(client).catch((error) => {
+      if (this.client === client) set("studioDiscoveryError", redact(error));
+      throw error;
+    }).finally(() => {
+      if (this.discovery?.request === request) this.discovery = undefined;
+    });
+    this.discovery = { client, request };
+    return request;
+  }
+  private async readDiscovery(client: Client) {
     const result = await client.callTool(
       { name: "list_roblox_studios", arguments: {} },
       undefined,
@@ -252,20 +295,66 @@ export class Studio {
       get<Record<string, StudioInstance>>("studioKnownInstances") || {};
     for (const instance of instances) known[instance.id] = instance;
     set("studioKnownInstances", known);
+    const updateMetadata = db.prepare(`UPDATE games SET
+      place_id=CASE WHEN COALESCE(place_id,'')='' AND (?='' OR COALESCE(universe_id,'') IN ('',?)) THEN ? ELSE place_id END,
+      universe_id=CASE WHEN COALESCE(universe_id,'')='' AND (?='' OR COALESCE(place_id,'') IN ('',?)) THEN ? ELSE universe_id END
+      WHERE studio_id=?`);
+    for (const item of instances)
+      updateMetadata.run(item.universeId, item.universeId, item.placeId, item.placeId, item.placeId, item.universeId, item.id);
     return { ...result, ...discovery };
   }
   async maintain() {
-    if (
-      !this.stopped &&
-      !this.client &&
-      !this.connecting &&
-      Date.now() >= this.nextReconnect &&
-      get("mcpCommand")
-    )
+    if (this.stopped || this.connecting || this.probing) return;
+    if (this.client && this.configuration !== this.configuredCommand()) {
       await this.connect();
+      return;
+    }
+    const client = this.client;
+    if (!client) {
+      if (Date.now() >= this.nextReconnect && get("mcpCommand")) await this.connect();
+      return;
+    }
+    if (Date.now() < this.nextHealth || this.activeCalls)
+      return;
+    this.probing = true;
+    this.nextHealth = Date.now() + 15000;
+    try {
+      // Tool listing is supported by both the current SDK and Studio's tool server.
+      await client.listTools({}, { timeout: 3500 });
+      if (this.client !== client) return;
+      set("studioHealth", { checkedAt: Date.now() });
+      if (this.tools.some(t => t.name === "list_roblox_studios"))
+        await this.discover().catch(() => {});
+    } catch (error) {
+      if (this.client !== client) return;
+      if (this.activeCalls) {
+        this.nextHealth = Date.now() + 3500;
+        return;
+      }
+      await this.close(false);
+      if (this.stopped) return;
+      this.nextReconnect = Date.now() + 1500;
+      set("studioStatus", "disconnected");
+      set("studioHealth", { lastFailureAt: Date.now(), retryAt: this.nextReconnect });
+      set("studioError", `Studio MCP health check failed. Syntra will retry. ${redact(error)}`);
+    } finally {
+      this.probing = false;
+    }
   }
+
+  async waitUntilConnected(signal?: AbortSignal) {
+    if ((this.client && !this.connecting) || this.stopped || !get("mcpCommand")) return;
+    const deadline = Date.now() + 10000;
+    while (Date.now() < deadline && (!this.client || this.connecting)) {
+      signal?.throwIfAborted();
+      void this.maintain().catch((error) => event(redact(error), "System", "error"));
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    signal?.throwIfAborted();
+  }
+
   async close(stop = true) {
-    this.stopped = stop;
+    if (stop) this.stopped = true;
     const client = this.client,
       transport = this.transport;
     this.client = null;
@@ -337,14 +426,14 @@ export class Studio {
       throw new StudioCallError(
         "This Studio has an unresolved operation. Reconcile it in Reviews before further calls.",
       );
-    const writes = isMutation(name) && !(name === "open_cloud_invoke" && args.method === "GET"),
+    const writes = !studioReads(name, args),
       lock = `studio:${studioId}`;
     const deadline = Date.now() + (get<number>("mcpLockTimeoutMs") || 180000);
     const checkStopped = () => {
       signal?.throwIfAborted();
       const taskId = owner.split(":")[0],
         t = task(taskId);
-      if (t && (t.stop_requested || get("paused")))
+      if (t?.stop_requested)
         throw new StudioCallError(
           "Studio operation cancelled before execution",
         );
@@ -365,6 +454,7 @@ export class Studio {
         await new Promise((r) => setTimeout(r, 25));
       }
     }
+    this.activeCalls++;
     let sent = false,
       holdLock = false;
     try {
@@ -378,20 +468,14 @@ export class Studio {
         throw new StudioCallError("This Open Cloud tool cannot confirm the target Studio.");
       }
       if (name !== "list_roblox_studios" && canDiscover) {
-        const discovery = await client.callTool(
-          { name: "list_roblox_studios", arguments: {} },
-          undefined,
-          { timeout: 15000, signal },
-        );
-        if (discovery.isError)
-          throw new StudioCallError(
-            "Studio discovery failed; rediscover instances in Games",
-          );
-        const ids = studioIds(discovery);
-        if (!ids)
-          throw new StudioCallError(
-            "Studio discovery is unrecognized; refresh instances before executing work",
-          );
+        let discovery;
+        try {
+          discovery = await this.discover();
+        } catch (error) {
+          throw new StudioCallError(`Studio discovery failed: ${redact(error)}`, true);
+        }
+        if (this.client !== client) throw new StudioCallError("Studio reconnected before the operation was sent. Try the tool again.", true);
+        const ids = discovery.instances.map(item => item.id);
         if (unpinnedCloud && (ids.length !== 1 || ids[0] !== studioId)) {
           throw new StudioCallError("Open Cloud requires only the pinned Studio instance to be open.");
         }
@@ -402,17 +486,15 @@ export class Studio {
               "SELECT g.* FROM games g JOIN runs r ON r.game_id=g.id WHERE r.id=?",
             )
             .get(boundTask.run_id);
-          const target = studioInstances(discovery)?.find(
+          const target = discovery.instances.find(
             (x) => x.id === studioId,
           );
-          if (
-            target &&
-            project?.place_id &&
-            project.place_id !== target.placeId
-          )
-            throw new StudioCallError(
-              "The Studio instance does not match this project's Place ID. Open the correct game before executing tools.",
-            );
+          if (target && project?.place_id) {
+            if (target.placeId && project.place_id !== target.placeId)
+              throw new StudioCallError("The Studio instance does not match this project's Place ID. Open the correct game before executing tools.");
+            if (!target.placeId && writes)
+              throw new StudioCallError("Studio has not reported a Place ID for this window. Syntra cannot confirm the configured place for this write.");
+          }
           if (
             target &&
             project?.universe_id &&
@@ -479,7 +561,7 @@ export class Studio {
         ? error
         : new StudioCallError(
             `Studio ${name}: ${redact(error)}`,
-            !sent,
+            !sent || !writes,
             sent && writes,
           );
       holdLock = failure.uncertain;
@@ -487,6 +569,7 @@ export class Studio {
       event(failure.message, role, "error");
       throw failure;
     } finally {
+      this.activeCalls--;
       if (!holdLock)
         db.prepare("DELETE FROM locks WHERE name=? AND owner=?").run(
           lock,

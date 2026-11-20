@@ -1,4 +1,4 @@
-import { operationRisk } from "./feature-contracts";
+import { approvalRisk } from "./approval-display";
 export function parsePayload(value: unknown): unknown {
   if (typeof value !== "string") return value;
   try {
@@ -100,8 +100,8 @@ export function approvalGroups(data: any) {
         )
       : null;
     const id = codex
-      ? `codex:${approval.session_id || "session"}:${operationRisk(approval.tool) || "ordinary"}`
-      : `${run?.game_id || "workspace"}:${task?.agent || "Agent"}:${media ? "assets" : "studio"}:${operationRisk(approval.tool) || "ordinary"}`;
+      ? `codex:${approval.session_id || "session"}:${approvalRisk(approval) || "ordinary"}`
+      : `${run?.game_id || "workspace"}:${task?.agent || "Agent"}:${media ? "assets" : "studio"}:${approvalRisk(approval) || "ordinary"}`;
     if (!groups.has(id))
       groups.set(id, {
         id,

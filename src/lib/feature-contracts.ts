@@ -209,7 +209,8 @@ export const telemetrySchema = z
 export function operationRisk(tool: string) {
   return tool === "open_cloud_invoke" || /publish/i.test(tool)
     ? "publication"
-    : /generate_(mesh|material|procedural)|purchase|paid/i.test(tool)
+    : tool === "execute_luau" ? "arbitrary Studio code execution"
+      : /generate_(mesh|material|procedural)|purchase|paid/i.test(tool)
       ? "paid operation"
       : /delete|destroy|remove_asset/i.test(tool)
         ? "destructive operation"

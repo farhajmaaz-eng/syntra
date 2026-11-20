@@ -1,5 +1,6 @@
 "use client";
 
+import { approvalArgs, approvalRisk, describeApproval } from "@/lib/approval-display";
 import { nativeFolderPicker } from "@/lib/native-desktop";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -84,6 +85,7 @@ export default function CodexWorkspace({
   const [archive, setArchive] = useState<any>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [approvalNotes, setApprovalNotes] = useState<Record<string, string>>({});
+  const [approvalAuthorizations, setApprovalAuthorizations] = useState<Record<string, boolean>>({});
   const [sandbox, setSandbox] = useState(
     status.sandbox || "workspace-write",
   );
@@ -188,13 +190,16 @@ export default function CodexWorkspace({
   }
 
   async function approve(id: string, approved: boolean, note = "") {
-    await run("approve", {
+    const result = await run("approve", {
       id,
       approved,
       note,
-      authorized: false,
+      authorized: approved && !!approvalAuthorizations[id],
     });
-    setApprovalNotes((current) => ({ ...current, [id]: "" }));
+    if (result) {
+      setApprovalNotes((current) => ({ ...current, [id]: "" }));
+      setApprovalAuthorizations((current) => ({ ...current, [id]: false }));
+    }
   }
 
   const pending = (detail?.approvals || []).filter(
@@ -521,7 +526,7 @@ export default function CodexWorkspace({
                   })
                 }
               />
-              Auto-approve Codex commands and file changes
+              Auto-approve recognized additions and edits to project files
             </label>
             <Button disabled={busy}>Save Codex settings</Button>
           </form>
@@ -686,7 +691,9 @@ export default function CodexWorkspace({
                     <ShieldCheck size={16} /> Approval required
                   </h3>
                   {pending.map((approval: any) => {
-                    const args = JSON.parse(approval.args || "{}");
+                    const args = approvalArgs(approval.args) as any;
+                    const description = describeApproval(approval);
+                    const risk = approvalRisk(approval);
                     return (
                       <article
                         key={approval.id}
@@ -695,11 +702,13 @@ export default function CodexWorkspace({
                       >
                         <div>
                           <StatusChip status={args.kind || "approval"} />
-                          <strong>{approval.tool}</strong>
+                          <strong>{description.action}</strong>
                           {args.reason && <small>{args.reason}</small>}
                         </div>
+                        <p>{description.effect}</p>
+                        <small>{description.resource}</small>
                         {args.command && <pre>{args.command}</pre>}
-                        {args.cwd && <small>cwd: {args.cwd}</small>}
+                        {args.kind !== "question" && <details><summary>Technical details</summary><pre>{JSON.stringify(args, null, 2)}</pre></details>}
                         {args.questions && (
                           <ul>
                             {args.questions.map((question: any) => (
@@ -728,10 +737,20 @@ export default function CodexWorkspace({
                             }
                           />
                         </label>
+                        {risk && (
+                          <label className="checkbox">
+                            <input type="checkbox" checked={!!approvalAuthorizations[approval.id]}
+                              onChange={(event) => {
+                                const checked = event.currentTarget.checked;
+                                setApprovalAuthorizations((current) => ({ ...current, [approval.id]: checked }));
+                              }} />
+                            I authorize this {risk}.
+                          </label>
+                        )}
                         <div className="codex-row">
                           <Button
                             size="sm"
-                            disabled={busy}
+                            disabled={busy || (!!risk && !approvalAuthorizations[approval.id])}
                             onClick={() =>
                               approve(
                                 approval.id,
@@ -740,7 +759,7 @@ export default function CodexWorkspace({
                               )
                             }
                           >
-                            <CircleCheck size={14} /> Approve
+                            <CircleCheck size={14} /> {args.kind === "question" ? "Reply" : "Allow once"}
                           </Button>
                           <Button
                             size="sm"
@@ -754,7 +773,7 @@ export default function CodexWorkspace({
                               )
                             }
                           >
-                            <CircleX size={14} /> Reject
+                            <CircleX size={14} /> Deny
                           </Button>
                         </div>
                       </article>

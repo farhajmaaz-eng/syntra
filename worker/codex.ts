@@ -13,6 +13,7 @@ import { z } from "zod";
 import { db, dataDir, get, set, event, task } from "./store";
 import { OperationError, redact } from "./errors";
 import { codexAgentModel } from "../src/lib/model-presets";
+import { approvalRisk } from "../src/lib/approval-display";
 
 const require = createRequire(import.meta.url);
 const SESSION_STATUS = ["idle", "running", "error"] as const;
@@ -40,6 +41,8 @@ type ActiveTurn = {
   turnId: string;
   taskId?: string;
   text: string;
+  messages: Map<string, string>;
+  fileDiffs: Map<string, string>;
   diff: string;
   usage: any;
   error: string;
@@ -546,6 +549,8 @@ class CodexManager {
         db.prepare("SELECT 1 FROM codex_turns WHERE id=?").get(turn.id)) return false;
     db.prepare("INSERT INTO codex_turns(id,session_id,task_id,prompt) VALUES (?,?,?,?)")
       .run(turn.id, active.sessionId, active.taskId || null, active.prompt);
+    if (active.taskId)
+      db.prepare("UPDATE tasks SET execution_turn_id=? WHERE id=?").run(turn.id, active.taskId);
     active.turnId = turn.id;
     this.activeByTurn.set(turn.id, active);
     const early = active.earlyEvents.splice(0);
@@ -565,12 +570,48 @@ class CodexManager {
     `).run(taskId);
   }
 
+  private waitForApproval(
+    active: ActiveTurn,
+    rpcId: string | number,
+    kind: string,
+    tool: string,
+    args: Record<string, unknown>,
+    questions?: any[],
+    onExpire?: () => void,
+  ) {
+    const approvalId = randomUUID();
+    const { sessionId, turnId, threadId } = active;
+    const taskId = active.taskId || `codex-session:${sessionId}`;
+    db.prepare(
+      "INSERT INTO approvals(id,task_id,call_id,tool,args,status,provider,session_id,rpc_request_id) VALUES (?,?,?,?,?,'pending','codex',?,?)",
+    ).run(approvalId, taskId, `${turnId}:${rpcId}`, tool, JSON.stringify(args), sessionId, String(rpcId));
+    if (active.taskId) this.syncApprovalState(active.taskId);
+    event(kind === "question" ? "Codex question required" : `Approval required for ${tool}`, task(active.taskId || "")?.agent || "Codex");
+    const response = new Promise<any>((resolve) => {
+      const timer = setTimeout(() => {
+        this.approvals.delete(String(rpcId));
+        db.prepare(
+          "UPDATE approvals SET status='cancelled',note=?,decided_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'",
+        ).run("No decision was recorded before the approval expired", approvalId);
+        if (active.taskId) this.syncApprovalState(active.taskId);
+        onExpire?.();
+        resolve(null);
+      }, APPROVAL_TIMEOUT_MS);
+      this.approvals.set(String(rpcId), { approvalId, rpcId, sessionId, threadId, turnId, kind, questions, resolve, timer });
+    });
+    return { approvalId, response };
+  }
+
   private async serverRequest(message: any, owner: ChildProcessWithoutNullStreams | null) {
     const reply = (value: unknown) => this.child === owner && this.send(value);
     const method = message.method;
     const params = message.params || {};
     if (method === "item/tool/call") {
-      const active = this.activeTurn(params.threadId, params.turnId);
+      if (typeof params.callId !== "string" || !params.callId) {
+        reply({ id: message.id, error: { code: -32602, message: "Missing dynamic tool call ID" } });
+        return;
+      }
+      const active = params.turnId ? this.activeTurn(params.threadId, params.turnId) : undefined;
       if (!active?.toolHandler || active.stopRequested) {
         reply({
           id: message.id,
@@ -587,6 +628,19 @@ class CodexManager {
         return;
       }
       try {
+        if (["design_edit", "illustrate_mesh"].includes(params.tool) &&
+            approvalRisk({ provider: "codex", tool: params.tool, args: params.arguments })) {
+          const role = active.taskId ? task(active.taskId)?.agent : "Codex";
+          if (params.tool === "design_edit" ? !["Frame", "Codex"].includes(role) : !["Scenic", "Codex"].includes(role))
+            throw new OperationError(`${role} cannot delete content with this tool.`);
+          const requestId = `creative:${active.turnId}:${params.callId}`;
+          if (db.prepare("SELECT 1 FROM approvals WHERE provider='codex' AND rpc_request_id=?").get(requestId))
+            throw new OperationError("This edit has already been sent for approval.");
+          const { response } = this.waitForApproval(active, requestId, "creative", params.tool, params.arguments);
+          const decision = await response;
+          if (decision?.decision !== "accept" || active.stopRequested || active.settled)
+            throw new OperationError("The destructive edit was not approved.");
+        }
         const output = await active.toolHandler({
           tool: params.tool,
           arguments: params.arguments,
@@ -641,7 +695,7 @@ class CodexManager {
       return;
     }
     const threadId = params.threadId || "";
-    const active = this.activeTurn(threadId, params.turnId);
+    const active = params.turnId ? this.activeTurn(threadId, params.turnId) : undefined;
     const turnId = active?.turnId;
     const sessionRow = active && this.session(active.sessionId);
     if (!active || !turnId || active.stopRequested || !sessionRow) {
@@ -659,8 +713,7 @@ class CodexManager {
           : method === "item/permissions/requestApproval"
             ? "permissions"
             : "question";
-    const approvalId = randomUUID();
-    const taskId = active?.taskId || sessionRow.task_id || `codex-session:${sessionRow.id}`;
+    if (this.approvals.has(String(message.id))) return;
     const args = {
       kind,
       method,
@@ -674,49 +727,23 @@ class CodexManager {
       sessionId: sessionRow.id,
       startedAtMs: params.startedAtMs || Date.now(),
     };
-    db.prepare(
-      "INSERT INTO approvals(id,task_id,call_id,tool,args,status,provider,session_id,rpc_request_id) VALUES (?,?,?,?,?,'pending','codex',?,?)",
-    ).run(
-      approvalId,
-      taskId,
-      String(message.id),
-      `codex/${kind}`,
-      JSON.stringify(args),
-      sessionRow.id,
-      String(message.id),
+    const { approvalId, response } = this.waitForApproval(
+      active, message.id, kind, `codex/${kind}`, args, params.questions,
+      () => reply({ id: message.id, error: { code: -32000, message: "Approval expired without a decision" } }),
     );
-    if (active.taskId) this.syncApprovalState(active.taskId);
     recordEvent(sessionRow.id, turnId, method, params);
-    event(
-      `Codex ${kind === "question" ? "question" : "approval"} required`,
-      "Codex",
-    );
-    const response = new Promise<any>((resolve) => {
-      const timer = setTimeout(() => {
-        this.approvals.delete(String(message.id));
-        db.prepare(
-          "UPDATE approvals SET status='cancelled',note=?,decided_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'",
-        ).run("No decision was recorded before the approval expired", approvalId);
-        if (active.taskId) this.syncApprovalState(active.taskId);
-        reply({
-          id: message.id,
-          error: { code: -32000, message: "Approval expired without a decision" },
-        });
-        resolve(null);
-      }, APPROVAL_TIMEOUT_MS);
-      this.approvals.set(String(message.id), {
-        approvalId,
-        rpcId: message.id,
-        sessionId: sessionRow.id,
-        threadId,
-        turnId,
-        kind,
-        questions: params.questions,
-        resolve,
-        timer,
+    const ordinaryFileChange = kind === "fileChange" && sandboxMode() === "workspace-write" &&
+      !params.grantRoot && Array.isArray(params.changes) && params.changes.length > 0 &&
+      params.changes.every((change: any) => {
+        if (!["add", "update"].includes(change.kind?.type) || typeof change.path !== "string" || !change.path) return false;
+        try {
+          validateCodexCwd(dirname(resolve(sessionRow.cwd, change.path)));
+          return true;
+        } catch {
+          return false;
+        }
       });
-    });
-    if (get("codexAutoApprove") && kind !== "question")
+    if (get("codexAutoApprove") && ordinaryFileChange)
       this.resolveApproval(
         approvalId,
         true,
@@ -818,7 +845,8 @@ class CodexManager {
       const starting = this.activeByThread.get(params.threadId);
       if (starting?.submitted) this.bindTurn(starting, { id: turnId });
     }
-    const active = this.activeTurn(params.threadId, turnId);
+    const active = turnId || method === "thread/closed"
+      ? this.activeTurn(params.threadId, turnId) : undefined;
     if (turnId && !active) {
       const starting = this.activeByThread.get(params.threadId);
       if (starting?.submitted && !starting.turnId && starting.earlyEvents.length < 100 &&
@@ -842,7 +870,9 @@ class CodexManager {
 
     if (method === "thread/status/changed") return;
     if (method === "item/agentMessage/delta" && active) {
-      active.text += params.delta || "";
+      const itemId = String(params.itemId || "unidentified");
+      active.messages.set(itemId, ((active.messages.get(itemId) || "") + (params.delta || "")).slice(0, 120000));
+      active.text = [...active.messages.values()].join("\n\n").slice(0, 120000);
       this.persistStreaming(active);
       active.onText?.(active.text);
       return;
@@ -857,17 +887,8 @@ class CodexManager {
     }
     if (method === "item/completed" && active) {
       const item = params.item || {};
-      if (item.type === "agentMessage" && item.text)
-        active.text = String(item.text);
-      if (item.type === "fileChange" && Array.isArray(item.changes)) {
-        const diff = item.changes
-          .map((change: any) => {
-            const path = change.path || "unknown path";
-            return `--- ${path}\n${change.diff || ""}`;
-          })
-          .join("\n");
-        if (diff) active.diff = diff;
-      }
+      this.mergeCompletedItems(active, [item]);
+      if (item.type === "agentMessage") active.onText?.(active.text);
       this.persistStreaming(active, true);
       return;
     }
@@ -913,6 +934,22 @@ class CodexManager {
     );
   }
 
+  private mergeCompletedItems(active: ActiveTurn, items: any[]) {
+    for (const item of items) {
+      if (item?.type === "agentMessage" && item.text)
+        active.messages.set(String(item.id || "unidentified"), String(item.text).slice(0, 120000));
+      if (item?.type === "fileChange" && Array.isArray(item.changes)) {
+        for (const change of item.changes) {
+          if (change.diff) active.fileDiffs.set(change.path || "unknown path", String(change.diff).slice(0, 240000));
+        }
+      }
+    }
+    if (active.messages.size)
+      active.text = [...active.messages.values()].join("\n\n").slice(0, 120000);
+    if (active.fileDiffs.size)
+      active.diff = [...active.fileDiffs].map(([path, diff]) => `--- ${path}\n${diff}`).join("\n").slice(0, 240000);
+  }
+
   private settleTurn(
     active: ActiveTurn,
     status: string,
@@ -924,12 +961,8 @@ class CodexManager {
     active.settled = true;
     active.notifyFinished();
     this.cancelApprovals(active.threadId, "Codex turn ended before a decision");
-    if (raw && Array.isArray(raw.items) && !active.text) {
-      const messages = raw.items
-        .filter((item: any) => item.type === "agentMessage" && item.text)
-        .map((item: any) => item.text);
-      if (messages.length) active.text = messages.join("\n\n");
-    }
+    if (Array.isArray(raw?.items) && raw.items.length)
+      this.mergeCompletedItems(active, raw.items);
     const normalized =
       status === "completed"
         ? "completed"
@@ -1142,6 +1175,8 @@ class CodexManager {
       turnId: "",
       taskId: input.taskId || sessionRow.task_id || undefined,
       text: "",
+      messages: new Map(),
+      fileDiffs: new Map(),
       diff: "",
       usage: null,
       error: "",
@@ -1193,6 +1228,10 @@ class CodexManager {
       if (!active.settled && (!turnId || !this.bindTurn(active, { id: turnId }))) {
         throw new OperationError("Codex returned an unconfirmed turn ID", false, true);
       }
+      if (!active.settled && ["completed", "failed", "interrupted"].includes(result?.turn?.status)) {
+        this.settleTurn(active, result.turn.status, result.turn.error?.message, result.turn);
+      }
+      if (!active.settled) this.watchCompletion(active);
     } catch (error) {
       if (active.settled || active.turnId) return done;
       active.settled = true;
@@ -1206,6 +1245,34 @@ class CodexManager {
       throw uncertain ? new OperationError(redact(error), false, true) : error;
     }
     return done;
+  }
+
+  private watchCompletion(active: ActiveTurn) {
+    let timer: ReturnType<typeof setTimeout>;
+    const check = async () => {
+      if (active.settled || active.stopRequested) return;
+      try {
+        const current = await this.request("thread/read", { threadId: active.threadId }, 5000);
+        if (!active.settled && !active.stopRequested &&
+            ["idle", "systemError", "notLoaded"].includes(current?.thread?.status?.type)) {
+          const result = await this.request("thread/read", {
+            threadId: active.threadId, includeTurns: true,
+          }, 5000);
+          const turn = result?.thread?.turns?.find((item: any) => item.id === active.turnId);
+          if (!active.settled && turn && ["completed", "failed", "interrupted"].includes(turn.status))
+            this.settleTurn(active, turn.status, turn.error?.message, turn);
+        }
+      } catch {
+        // The stream remains authoritative until matching terminal state is available.
+      }
+      if (!active.settled && !active.stopRequested) schedule();
+    };
+    const schedule = () => {
+      timer = setTimeout(() => void check(), 30000);
+      timer.unref();
+    };
+    schedule();
+    void active.finished.then(() => clearTimeout(timer));
   }
 
   async interruptSession(sessionId: string) {
@@ -1264,7 +1331,7 @@ class CodexManager {
         db.prepare(
           "UPDATE approvals SET status='cancelled',note=?,decided_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'",
         ).run(note, approval.approvalId);
-        this.send({
+        if (approval.kind !== "creative") this.send({
           id: approval.rpcId,
           error: { code: -32000, message: note },
         });

@@ -74,9 +74,9 @@ function extractCalls(prompt) {
   if (/You are Tester/.test(prompt))
     return [
       { tool: "script_read", arguments: {} },
-      { tool: "start_stop_play", arguments: { start: true } },
+      { tool: "start_stop_play", arguments: { is_start: true } },
       { tool: "get_console_output", arguments: {} },
-      { tool: "start_stop_play", arguments: { start: false } },
+      { tool: "start_stop_play", arguments: { is_start: false } },
       {
         tool: "verify",
         arguments: {
@@ -150,6 +150,14 @@ async function runTurn(threadId, turnId, prompt) {
       arguments: call.arguments || {},
     });
     outputs.push(`${call.tool}: ${responseText(value).slice(0, 2000)}`);
+  }
+  if (prompt.includes("FIXTURE_MULTIPLE_MESSAGES")) {
+    for (const [id, text] of [["message-first", "First completed item"], ["message-second", "Second completed item"]]) {
+      note("item/agentMessage/delta", { threadId, turnId, itemId: id, delta: text });
+      note("item/completed", { threadId, turnId, item: { type: "agentMessage", id, text } });
+    }
+    finishTurn(turnId, "completed");
+    return;
   }
   note("item/agentMessage/delta", {
     threadId,
@@ -345,6 +353,16 @@ for await (const line of rl) {
     const prior = [...turns.entries()].findLast(([, turn]) => turn.threadId === params.threadId);
     turns.set(turnId, { threadId: params.threadId, prompt, status: "inProgress", interrupts: 0 });
     const response = { id, result: { turn: { id: turnId, status: "inProgress", items: [], error: null } } };
+    if (prompt.includes("FIXTURE_TERMINAL_REPLY")) {
+      turns.get(turnId).status = "completed";
+      note("item/agentMessage/delta", { threadId: params.threadId, turnId, itemId: "terminal", delta: "Incomplete draft" });
+      send({ id, result: { turn: { id: turnId, status: "completed", items: [
+        { id: "terminal", type: "agentMessage", text: "Terminal reply recovered." },
+        { id: "notes", type: "agentMessage", text: "Additional final message." },
+        { id: "patch", type: "fileChange", changes: [{ path: "src/recovered.ts", diff: "@@ -1 +1 @@\n-old\n+new" }] },
+      ] } } });
+      continue;
+    }
     if (prompt.includes("FIXTURE_EARLY")) {
       note("item/agentMessage/delta", { threadId: params.threadId, turnId, delta: "Early completed answer" });
       turns.get(turnId).status = "completed";
@@ -353,6 +371,7 @@ for await (const line of rl) {
       continue;
     }
     if (prior && prompt.includes("FIXTURE_STALE")) {
+      note("item/agentMessage/delta", { threadId: params.threadId, delta: "UNTAGGED TEXT" });
       note("item/agentMessage/delta", { threadId: params.threadId, turnId: prior[0], delta: "STALE TEXT" });
       note("turn/completed", { threadId: params.threadId, turn: { id: prior[0], status: "interrupted", items: [] } });
     }

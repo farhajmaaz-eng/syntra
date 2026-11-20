@@ -63,6 +63,7 @@ beforeEach(async () => {
     "attention_requests",
     "agent_messages",
     "approvals",
+    "permission_grants",
     "tool_calls",
     "usage",
     "memories",
@@ -551,4 +552,37 @@ describe("Sourced studio intelligence", () => {
       ).plan_status,
     ).toBe("pending");
   });
+});
+
+
+it("persists an exact Studio permission, isolates role, target and arguments, and revokes it", async () => {
+  const { studioApprovalScope, rememberedApproval } = await import("../worker/permissions");
+  const Database = (await import("better-sqlite3")).default;
+  const task = request("Builder");
+  const run = { game_id: "game", studio_id: "test-studio" };
+  const args = { path: "game.ServerScriptService.Test", source: "source", studio_id: run.studio_id };
+  const scope = studioApprovalScope(run, "Builder", "multi_edit", args);
+  expect(scope).toBeTruthy();
+  db.prepare("INSERT INTO approvals(id,task_id,call_id,tool,args,permission_scope) VALUES ('remember',?,'write','multi_edit',?,?)")
+    .run(task.taskId, JSON.stringify(args), scope);
+  expect(features.decideApproval({ id: "remember", approved: true, remember: true })).toMatchObject({ ok: true });
+  const reopened = new Database(resolve(dir, "syntra.sqlite"), { readonly: true });
+  try {
+    expect(reopened.prepare("SELECT scope,agent,tool FROM permission_grants").get()).toEqual({
+      scope, agent: "Builder", tool: "multi_edit",
+    });
+  } finally {
+    reopened.close();
+  }
+  const id = rememberedApproval(studioApprovalScope(run, "Builder", "multi_edit", { studio_id: run.studio_id, source: "source", path: args.path }));
+  expect(id).toBeTruthy();
+  for (const changed of [
+    studioApprovalScope(run, "Frame", "multi_edit", args),
+    studioApprovalScope({ ...run, studio_id: "another-studio" }, "Builder", "multi_edit", args),
+    studioApprovalScope(run, "Builder", "multi_edit", { ...args, source: "different" }),
+  ]) expect(rememberedApproval(changed)).toBeUndefined();
+  expect(studioApprovalScope(run, "Builder", "execute_luau", { code: "example" })).toBe("");
+  expect(features.featureAction("permissions/revoke", { id })).toMatchObject({ ok: true });
+  expect(rememberedApproval(scope)).toBeUndefined();
+  expect(db.prepare("SELECT verdict FROM review_events WHERE target_kind='permission' ORDER BY rowid").all()).toEqual([{ verdict: "granted" }, { verdict: "revoked" }]);
 });

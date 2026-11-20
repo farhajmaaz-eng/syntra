@@ -27,6 +27,7 @@ function counts() {
       "runs",
       "tasks",
       "approvals",
+      "permission_grants",
       "assets",
       "memories",
       "usage",
@@ -45,6 +46,7 @@ function fingerprint() {
       "runs",
       "tasks",
       "approvals",
+      "permission_grants",
       "tool_calls",
       "assets",
       "memories",
@@ -66,7 +68,7 @@ function fingerprint() {
   );
   const config = db
     .prepare(
-      "SELECT * FROM settings WHERE key NOT IN ('workerHeartbeat','studioDiscovery','studioKnownInstances','studioDiscoveryError','studioStatus','studioTools','studioError','pricing','pricingUpdated','modelCatalog') ORDER BY key",
+      "SELECT * FROM settings WHERE key NOT IN ('workerHeartbeat','studioDiscovery','studioKnownInstances','studioDiscoveryError','studioStatus','studioTools','studioError','studioHealth','pricing','pricingUpdated','modelCatalog') ORDER BY key",
     )
     .all();
   return createHash("sha256")
@@ -204,6 +206,7 @@ export async function confirmWorkspaceReset(
         set(key, key === "studioKnownInstances" ? {} : null);
       set("mcpCommand", "");
       set("mcpArgs", []);
+      db.prepare("DELETE FROM permission_grants").run();
       set("studioTools", []);
       set("studioStatus", "not configured");
       set("paused", true);
@@ -224,6 +227,7 @@ export async function confirmWorkspaceReset(
         "attention_requests",
         "agent_messages",
         "approvals",
+      "permission_grants",
         "tool_calls",
         "memories",
         "chat",

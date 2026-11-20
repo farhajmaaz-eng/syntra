@@ -10,6 +10,7 @@ import {
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
+import { isNativeDesktop } from "@/lib/native-desktop";
 import { useDesktopPreferences } from "@/lib/desktop";
 import { Appearance, Shortcuts } from "./desktop-controls";
 import {
@@ -152,6 +153,7 @@ export default function Studio({
     localStorage.setItem("syntra-game", id);
   }
   const [workerOffline, setWorkerOffline] = useState(false);
+  const backendSeen = useRef(false);
   const snapshotRequest = useRef<AbortController | null>(null);
   const load = useCallback(async (force = false) => {
     if (snapshotRequest.current && !force) return;
@@ -165,6 +167,7 @@ export default function Studio({
       const d = await safeResponseJson(r);
       if (!r.ok) throw new Error(d.error || `Worker unavailable (${r.status})`);
       if (request.signal.aborted) return;
+      backendSeen.current = true;
       setWorkerOffline(false);
       setData(d);
       setConnection((prev) => (prev === "live" ? "live" : "polling"));
@@ -173,6 +176,11 @@ export default function Studio({
     } catch {
       if (request.signal.aborted) return;
       setWorkerOffline(true);
+      if (backendSeen.current || isNativeDesktop()) {
+        setConnection("polling");
+        setError("Syntra worker is temporarily unavailable. Waiting to reconnect.");
+        return;
+      }
       setConnection("standalone");
       setData((prev: any) =>
         prev?.standaloneMode ? prev : loadStandaloneSnapshot(),
@@ -292,6 +300,8 @@ export default function Studio({
       "assets/save": "Asset saved",
       "assets/verdict": "Asset verdict recorded",
       "assets/archive": "Asset archived",
+      "permissions/revoke": "Saved permission revoked",
+      "runs/retry-verification": "Verification queued",
       "studio/switch/confirm":
         "Studio target updated; the team remains paused",
       "workspace/reset/confirm":
@@ -304,6 +314,8 @@ export default function Studio({
     };
 
     const runLocal = () => {
+      if (backendSeen.current || isNativeDesktop())
+        throw new Error("Syntra worker is unavailable. Check the task or activity log after reconnection before retrying.");
       const { snapshot: next, result } = runStandaloneAction(data, path, body);
       setWorkerOffline(true);
       setConnection("standalone");
@@ -327,17 +339,15 @@ export default function Studio({
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(330000),
       });
-      if (r.status === 503) {
-        return runLocal();
-      }
       const out = await safeResponseJson(r);
       if (!r.ok) throw new Error(out.error);
       await load(true);
-      if (path === "connect") {
+      if (path === "connect" || path === "studio/setup") {
+        setNoticeError(out?.status !== "connected");
         setNotice(
           out?.status === "connected"
             ? "Connected to Roblox Studio bridge"
-            : "Studio bridge is optional — no MCP executable configured or Studio isn't open",
+            : out?.error || "Studio bridge is unavailable. Check the setup in Settings.",
         );
       } else {
         setNotice(out?.message || notices[path] || "");
@@ -790,6 +800,7 @@ function SettingsForm({
     <div className="settings-layout">
       <form
         className="panel form"
+        key={JSON.stringify([s.mcpCommand, s.mcpArgs])}
         onSubmit={(e) => {
           e.preventDefault();
           const f = new FormData(e.currentTarget);
@@ -808,6 +819,7 @@ function SettingsForm({
             taskTimeoutMs: Number(f.get("taskTimeoutMs")),
             paused: s.paused,
             approvalRequired: f.get("approvalRequired") === "on",
+            studioReadApproval: f.get("studioReadApproval") === "on",
             mcpCommand: f.get("command"),
             mcpArgs: args,
           });
@@ -820,6 +832,13 @@ function SettingsForm({
           Enable Studio as MCP server in Assistant → Manage MCP Servers. Use the
           official command for your operating system.
         </p>
+        {data.standaloneMode ? (
+          <p>Connect this dashboard to a Syntra worker on the machine running Roblox Studio.</p>
+        ) : !s.mcpCommand && (
+          <Button type="button" variant="outline" disabled={busy} onClick={() => void act("studio/setup", {})}>
+            Use installed Roblox Studio
+          </Button>
+        )}
         <label>
           MCP executable
           <input
@@ -843,8 +862,24 @@ function SettingsForm({
             type="checkbox"
             defaultChecked={s.approvalRequired}
           />{" "}
-          Require approval for every Studio modification
+          Ask before Studio writes unless an exact permission is already saved
         </label>
+        <label className="checkbox">
+          <input name="studioReadApproval" type="checkbox" defaultChecked={!!s.studioReadApproval} /> Ask before Studio reads
+        </label>
+        <p>Publishing, paid operations, deletions and arbitrary Studio code always require a separate decision.</p>
+        {!!data.permissionGrants?.length && (
+          <details>
+            <summary>Saved Studio permissions</summary>
+            {data.permissionGrants.map((grant: any) => (
+              <div className="actions" key={grant.id}>
+                <span>{grant.agent} · {grant.tool} · {data.games.find((game: any) => game.id === grant.game_id)?.name || grant.game_id} · {grant.studio_id}</span>
+                <Button type="button" size="sm" variant="outline" disabled={busy}
+                  onClick={() => void act("permissions/revoke", { id: grant.id })}>Revoke</Button>
+              </div>
+            ))}
+          </details>
+        )}
         <hr />
         <h3>
           <Gauge size={18} /> Runtime

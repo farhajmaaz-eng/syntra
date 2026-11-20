@@ -11,7 +11,7 @@ let active = 0,
   maxActive = 0,
   count = 0;
 server.registerTool("list_roblox_studios", { inputSchema: {} }, async () =>
-  text([
+  text(mode === "inventory" ? JSON.parse(readFileSync(file, "utf8")) : [
     {
       studio_id:
         process.argv[4] || (mode === "stale" ? "new-studio" : "test-studio"),

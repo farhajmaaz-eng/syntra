@@ -24,6 +24,7 @@ process.env.CODEX_APP_SERVER_ARGS = JSON.stringify([
 const store = await import("../worker/store");
 const runtime = await import("../worker/runtime");
 const { codex } = await import("../worker/codex");
+const { decideApproval } = await import("../worker/features");
 const project = resolve(dir, "project");
 
 async function settle() {
@@ -34,7 +35,6 @@ async function waitFor(fn: () => boolean, timeout = 12000) {
   while (Date.now() - start < timeout) {
     if (fn()) return;
     await runtime.tick();
-    await settle();
     await new Promise((resolve) => setTimeout(resolve, 30));
   }
   throw new Error("Timed out waiting for Codex workflow");
@@ -97,6 +97,27 @@ describe("Codex as a first-class orchestrated agent", () => {
     expect(turn.result).not.toContain("Tool failed");
   }, 20000);
 
+  it("requires explicit permission before a standalone Codex turn can delete Penpot content", async () => {
+    const { codexAction } = await import("../worker/codex-actions");
+    const created = await codexAction("codex/session/create", { title: "Destructive design edit", cwd: project }, runtime.active);
+    const sessionId = created?.session?.id;
+    if (!sessionId) throw new Error("Standalone Codex session was not created.");
+    const request = 'FIXTURE_CALLS_B64:' + Buffer.from(JSON.stringify([
+      { tool: "design_edit", arguments: { revision: penpot.revision, actions: [{ action: "delete", layerId: "fixture-layer" }] } },
+    ])).toString("base64");
+    const readApproval = () => store.db.prepare("SELECT id FROM approvals WHERE session_id=? AND status='pending'").get(sessionId) as { id: string } | undefined;
+    const oldLayers = [...penpot.layers];
+    await codexAction("codex/session/turn", { id: sessionId, prompt: request }, runtime.active);
+    await waitFor(() => Boolean(readApproval()));
+    const approval = readApproval()!;
+    expect(() => decideApproval({ id: approval.id, approved: true })).toThrow("Explicit authorization");
+    expect(penpot.layers).toEqual(oldLayers);
+    decideApproval({ id: approval.id, approved: false });
+    await waitFor(() => Boolean(store.db.prepare("SELECT id FROM codex_turns WHERE session_id=? AND status='completed'").get(sessionId)));
+    expect(penpot.layers).toEqual(oldLayers);
+    expect(store.db.prepare("SELECT status FROM approvals WHERE id=?").get(approval.id)).toEqual({ status: "rejected" });
+  }, 15000);
+
   it("runs a delegated Codex task and independently verifies the real diff", async () => {
     store.db
       .prepare("INSERT INTO runs(id,request,studio_id) VALUES ('codex-run','Fix local module','')")
@@ -121,6 +142,10 @@ describe("Codex as a first-class orchestrated agent", () => {
     );
 
     await runtime.tick();
+    await waitFor(() => store.task(coding).status === "approval");
+    const waiting = store.db.prepare("SELECT id FROM approvals WHERE task_id=? AND status='pending'").get(coding) as { id: string };
+    expect(() => decideApproval({ id: waiting.id, approved: true })).toThrow("Explicit authorization");
+    decideApproval({ id: waiting.id, approved: true, authorized: true });
     await waitFor(() => store.task(coding).status === "completed", 15000);
 
     const completed = store.task(coding);

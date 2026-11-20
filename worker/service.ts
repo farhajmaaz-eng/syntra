@@ -2,7 +2,7 @@ import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { db, get, set, event, snapshot, task } from "./store";
-import { studio } from "./mcp";
+import { installedStudioBridge, studio } from "./mcp";
 import { previewStudioSwitch, confirmStudioSwitch } from "./studio-selection";
 import {
   previewWorkspaceReset,
@@ -108,6 +108,19 @@ export async function action(path: string, b: any) {
     interruptStopped();
     return featureResult;
   }
+  if (path === "studio/setup") {
+    if (active.size || connecting || studio.isConnecting)
+      throw new Error("Wait for current work before changing the Studio bridge.");
+    if (get("mcpCommand")) throw new Error("Clear the custom command in Settings before using the installed bridge.");
+    const bridge = installedStudioBridge();
+    if (!bridge) throw new Error("Syntra could not find Roblox Studio's MCP bridge on the worker machine. Install or update Studio on Windows or macOS, or enter its command in Settings.");
+    db.transaction(() => {
+      set("mcpCommand", bridge.command);
+      set("mcpArgs", bridge.args);
+    })();
+    await reconnect();
+    return { status: get("studioStatus"), error: get("studioError") };
+  }
   if (path === "settings") {
     const a = z
       .object({
@@ -116,6 +129,7 @@ export async function action(path: string, b: any) {
         taskTimeoutMs: z.number().int().min(1000).max(3600000).optional(),
         paused: z.boolean(),
         approvalRequired: z.boolean(),
+        studioReadApproval: z.boolean().optional(),
         mcpCommand: z.string().max(2000),
         mcpArgs: z.array(z.string()).max(30),
         maxSteps: z.number().int().min(5).max(100),
@@ -179,7 +193,7 @@ export async function action(path: string, b: any) {
   }
   if (path === "connect") {
     await reconnect();
-    return { status: get("studioStatus") };
+    return { status: get("studioStatus"), error: get("studioError") };
   }
   if (path === "studios") {
     return await studio.discover();
@@ -422,7 +436,7 @@ export function ensureEmbeddedWorkerStarted() {
   state.timer = setInterval(() => {
     interruptStopped();
     desktopNotifications?.();
-    if (!studio.client && !connecting && !maintaining) {
+    if (!connecting && !maintaining) {
       void studio.maintain().catch((e) => event(redact(e), "System", "error"));
     }
     if (

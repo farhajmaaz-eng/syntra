@@ -7,7 +7,7 @@ A Studio instance ID identifies an open Studio session, not a persistent Roblox 
 1. Open the **same game/place** in Roblox Studio and enable its MCP server.
 2. In Syntra, pause the team and wait for active operations to finish. Resolve any uncertain Studio operations in Reviews before changing an existing work target.
 3. Open **Games → select the project → Studio connection**. Use **Connect / refresh Studios** to get the current instance list.
-4. Select the previous run target and paste the new ID into **New Roblox Studio instance ID**. IDs can be entered manually; the replacement must still be present in a fresh live discovery response before unfinished work can be switched.
+4. Select the previous run target and choose the replacement by name from the discovered Studio windows. The replacement must still be present when Syntra rechecks discovery before switching unfinished work.
 5. Click **Review Studio switch**. Verify the project, previous/new IDs, Studio name and Place ID. Check the same-game confirmation and type the exact project name, then **Confirm switch**.
 6. The team stays paused. Review queued work and resume when ready. Tasks paused individually still require their normal Resume action.
 
@@ -21,7 +21,7 @@ A confirmation token expires after five minutes, is single-use, and is bound to 
 
 Unfinished matching runs receive the confirmed pin and a new pin revision. Unstarted tasks retain an empty conversation so the normal task/request context is built afresh. Existing structured task context gets the current ID. Unexecuted Studio calls are withdrawn with cancellation results, and their old approvals are cancelled. Pending verification intents are also withdrawn. The model must inspect again and propose new operations with new approvals.
 
-Completed tool results and accepted/cancelled runs remain historical evidence. An audit record preserves the previous state; no global search-and-replace modifies Luau source, human instructions or historical results. Internal delegation and completed tool IDs remain intact to avoid duplicate work. Cached cancelled calls cannot execute after restart. The LangGraph checkpoint stores task/phase state; authoritative selection is read from the persisted run on every turn.
+Completed tool results and accepted or cancelled runs remain historical evidence. An audit record preserves the previous state, including internal delegation and completed tool IDs. Cached cancelled calls cannot execute after restart. The worker reads the authoritative Studio selection from the persisted run on every turn.
 
 Models no longer choose `studio_id`: that field is removed from model-facing tool schemas, and the worker injects the confirmed run pin. A supplied conflicting ID is still rejected. Native calls record their target and pin revision, and completion/verification evidence is scoped to that revision. Existing completed Tester evidence cannot certify a reopened session; fresh testing is required. Per-Studio locks, stale-inspection protection, role permissions and mutation approvals remain enforced. Explicit Place ID metadata is also checked during execution, including manually configured projects.
 
@@ -36,10 +36,26 @@ Each reset first creates a private recovery backup under `SYNTRA_DATA_DIR/backup
 
 After a full reset, sign in to Codex and configure **Settings → Roblox Studio connection** executable/JSON arguments. In **Games → Add project**, enter the game name, Studio instance ID, and optional Roblox Place/Universe IDs. These fields configure new work. To reconnect existing work after a connection-only reset, use the confirmed switch flow instead. An ID pasted for new work does not silently retarget another run.
 
-## Verification
+## Previous Studio switch and reset verification
 
 Regression coverage uses the two reported IDs and includes preview/no-mutation semantics, explicit confirmation, wrong-game and stale-preview rejection, uncertain-operation blocking, scoped persistence changes, cancellation of old approvals/calls, preserved evidence, fresh verification revisions, actual queued-task binding, private backups, typed reset confirmation, full reset and disabled credential fallback. Existing SDK lifecycle/workflow tests are retained. A focused production-browser check exercises confirmation/cancellation, reset and manual setup against an isolated SDK fixture. No live Roblox Studio on another computer or real Codex inference is claimed.
 
 Verified for this change: TypeScript and production build passed; `npm test` passed all **71 tests in 10 files**. Production-browser checks passed manual project metadata, switch cancellation/confirmation, queued-pin updates, old-approval withdrawal, mobile layout, connection reset with preserved work, manual MCP/instance setup, full reset/private backups, removed credentials and browser-console checks. These checks used an isolated real worker/SQLite database and an explicit MCP SDK peer, with no inference requests or live Roblox changes. The browser checks completed in stages: a task-count assertion was corrected to include the fresh Tester task, a legacy textarea locator was corrected, and the remaining checks resumed from the connection-reset checkpoint to avoid repeating completed flows.
 
 For the focused browser check, launch worker and production Next with the same disposable `/tmp/syntra-pin-*` data directory, with `tests/mcp-fixture.mjs` as the MCP command's Node script (arguments: output file, `default`, replacement instance ID, `123`), then run `SYNTRA_DATA_DIR=/tmp/syntra-pin-check node scripts/studio-selection-smoke.mjs`. The script checks that the running worker uses the test directory before changing data. Its optional `SYNTRA_SMOKE_RESUME=connection-reset` mode resumes only after the fixture's connection reset has already completed and validates that checkpoint before proceeding.
+
+## Runtime behavior
+
+The React app sends requests to the same Next.js API in a browser and in Tauri. The API uses the embedded worker or proxies a separately launched worker. Tauri starts and supervises the bundled Node server. The worker owns Studio MCP, Codex, SQLite task state, and the scheduler. Browser-only sessions can plan locally. A dashboard that has connected to a worker retains its last snapshot during an outage and waits to reconnect before submitting changes.
+
+A task has a persistent ID, a Codex thread, and a different turn ID for each execution. Syntra correlates tool requests, approvals, messages, and completion by turn. A matching terminal reply can complete a turn even if its notification is missing. The worker can recover a recorded completion after a restart. If a Studio write might have been sent, Review asks for reconciliation before the operation can be retried.
+
+The scheduler runs one turn per role, up to the configured team limit. A task waiting for approval or a human answer releases its execution slot for other roles. Handoffs carry task IDs and saved outputs. A worker failure is recorded in the Lead’s run context. Lead can answer direct questions without scheduling specialists.
+
+Studio MCP checks health and refreshes the window list while the connection is idle. Missing place or universe metadata stays blank. Reconnecting a bridge leaves the selected Studio target pinned. Review a replacement if the Studio ID changes. Default bridge setup requires Roblox Studio on a Windows or macOS machine that runs the worker. A remote browser can use that worker through the hosted Syntra dashboard. Penpot runs as a separate HTTP integration verified in Syntra Graphics. Illustrate uses a local model engine and has no bridge process to start.
+
+## Permissions and verification
+
+Studio reads are allowed within the connected workspace by default. Configure read and write prompts in Settings. **Always allow these details** is available for eligible script edits and asset inserts. It matches the agent, project, selected Studio, bridge configuration, and exact arguments. Revoke it under **Settings → Saved Studio permissions**. The Review history records grants, reuse and revocation. Arbitrary Studio Luau, publishing, paid actions, creative workspace deletions, and Codex command and permission approval requests require explicit decisions.
+
+Task execution and independent verification appear separately. A completed implementation can reach Review with failed or incomplete verification. **Retry verification** creates a new Tester task while preserving the earlier evidence and completed implementation. Review can record human acceptance with unresolved verification after an explicit acknowledgment. Use the task execution timeline, tool activity, and Codex session transcript to investigate issues.

@@ -458,6 +458,7 @@ it("keeps validation for a Lead turn with neither an answer nor delegated work",
 });
 
 it("keeps Codex approval waits in sync with the task status", async () => {
+  store.set("concurrency", 1);
   store.set("codexAutoApprove", false);
   const id = run("Architect", "FIXTURE_APPROVAL");
   try {
@@ -470,13 +471,34 @@ it("keeps Codex approval waits in sync with the task status", async () => {
     }
     expect(approval).toBeDefined();
     expect(store.task(id).status).toBe("approval");
+    const independent = run("Builder", "Answer the independent request");
+    await runtime.tick();
+    for (let i = 0; i < 100 && store.task(independent).status !== "completed"; i++)
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(store.task(independent).status).toBe("completed");
+    expect(store.task(id).status).toBe("approval");
     const { decideApproval } = await import("../worker/features");
-    decideApproval({ id: approval!.id, approved: true, note: "Proceed" });
+    decideApproval({ id: approval!.id, approved: true, authorized: true, note: "Proceed" });
     await idle();
     expect(store.task(id).status).toBe("completed");
   } finally {
     store.set("codexAutoApprove", true);
   }
+});
+
+it("reports a failed Tester turn as incomplete verification of a completed Builder task", async () => {
+  const builderId = run("Builder", "Deliver the requested implementation");
+  const { run_id: runId } = store.task(builderId);
+  const testerId = store.addTask(runId, "Tester", "Run playtest", "FIXTURE_FAIL", [builderId]);
+  await runtime.tick();
+  await idle();
+  await runtime.tick();
+  await idle();
+  await runtime.tick();
+  expect(store.task(builderId).status).toBe("completed");
+  expect(store.task(testerId)).toMatchObject({ status: "failed", error: expect.stringContaining("Fixture failure") });
+  expect(store.db.prepare("SELECT status,verification_status FROM runs WHERE id=?").get(runId))
+    .toEqual({ status: "review", verification_status: "incomplete" });
 });
 
 it("cannot complete a task while a tool outcome remains uncertain", async () => {
@@ -499,4 +521,66 @@ it("upgrades shipped Lead instructions while preserving a custom prompt", () => 
   store.migrateLeadPrompt();
   expect(read().prompt).toBe("Custom project instructions");
   store.db.prepare("UPDATE agents SET prompt=? WHERE name='Lead'").run(upgraded);
+});
+
+it("keeps Builder execution completed when verification cannot run, and retries only Tester", async () => {
+  const builderId = run("Builder", "Implement existing game change");
+  const { run_id: runId } = store.task(builderId);
+  const testerId = store.addTask(runId, "Tester", "Verify change", calls([
+    { tool: "verification_incomplete", arguments: { evidence: "Roblox Studio was unavailable. Runtime playtesting could not start." } },
+  ]), [builderId]);
+  await runtime.tick();
+  await idle();
+  await runtime.tick();
+  await idle();
+  await runtime.tick();
+  const result = store.db.prepare("SELECT status,verification_status FROM runs WHERE id=?");
+  expect(result.get(runId)).toEqual({ status: "review", verification_status: "incomplete" });
+  expect(store.task(builderId).status).toBe("completed");
+  expect(store.task(testerId)).toMatchObject({ status: "completed", verification_status: "incomplete" });
+  const { decideRun } = await import("../worker/features");
+  expect(() => decideRun({ id: runId, accepted: true })).toThrow(/incomplete/i);
+  const retry = featureAction("runs/retry-verification", { id: runId }) as { taskId: string };
+  expect(store.task(retry.taskId)).toMatchObject({ status: "queued", agent: "Tester" });
+  expect(store.task(testerId)).toMatchObject({ status: "completed", verification_status: "incomplete", verification_superseded: 1 });
+  expect(store.task(builderId).status).toBe("completed");
+});
+
+it("restores a confirmed completed turn when the worker stopped before updating the task", () => {
+  const id = run("Builder");
+  const sessionId = randomUUID(), turnId = randomUUID();
+  store.db.prepare("INSERT INTO codex_sessions(id,cwd,title,task_id) VALUES (?,?,'Recovered',?)").run(sessionId, dir, id);
+  store.db.prepare("INSERT INTO codex_turns(id,session_id,task_id,prompt,status,result) VALUES (?,?,?,'Test','completed','Saved final output')").run(turnId, sessionId, id);
+  store.db.prepare("UPDATE tasks SET status='running',execution_turn_id=? WHERE id=?").run(turnId, id);
+  runtime.recover();
+  expect(store.task(id)).toMatchObject({ status: "completed", result: "Saved final output" });
+});
+
+it("preserves an acknowledged completion if pause was requested before recovery", () => {
+  const id = run("Builder");
+  const sessionId = randomUUID(), turnId = randomUUID();
+  store.db.prepare("INSERT INTO codex_sessions(id,cwd,title,task_id) VALUES (?,?,'Recovered',?)").run(sessionId, dir, id);
+  store.db.prepare("INSERT INTO codex_turns(id,session_id,task_id,prompt,status,result) VALUES (?,?,?,'Test','completed','Saved before pause')").run(turnId, sessionId, id);
+  store.db.prepare("UPDATE tasks SET status='running',stop_requested='pause',execution_turn_id=? WHERE id=?").run(turnId, id);
+  store.db.prepare("UPDATE runs SET status='paused' WHERE id=?").run(store.task(id).run_id);
+  runtime.recover();
+  expect(store.task(id)).toMatchObject({ status: "completed", stop_requested: null, result: "Saved before pause" });
+});
+
+it("makes completed implementation reviewable when Tester is disabled", async () => {
+  const builderId = run("Builder", "Implement existing game change");
+  const { run_id: runId } = store.task(builderId);
+  store.db.prepare("UPDATE agents SET enabled=0 WHERE name='Tester'").run();
+  try {
+    await runtime.tick();
+    await idle();
+    await runtime.tick();
+    expect(store.task(builderId).status).toBe("completed");
+    expect(store.db.prepare("SELECT status,verification_status FROM runs WHERE id=?").get(runId))
+      .toEqual({ status: "review", verification_status: "incomplete" });
+    expect(store.db.prepare("SELECT status,verification_note FROM tasks WHERE run_id=? AND agent='Tester'").get(runId))
+      .toEqual({ status: "blocked", verification_note: expect.stringContaining("disabled") });
+  } finally {
+    store.db.prepare("UPDATE agents SET enabled=1 WHERE name='Tester'").run();
+  }
 });

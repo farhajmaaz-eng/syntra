@@ -171,6 +171,7 @@ export function TaskInspector({
           </dd>
         </div>
       </dl>
+      {task.verification_note && <p><strong>Verification {task.verification_status}</strong> · {task.verification_note}</p>}
       {task.error && <p className="failure">{task.error}</p>}
       {task.result && (
         <div className="reference-markdown">
@@ -232,6 +233,14 @@ export function TaskInspector({
       <ResourceState loading={info.loading} error={info.error} variant="detail">
         {info.data && (
           <>
+            {!!info.data.timeline?.length && (
+              <details>
+                <summary>Execution timeline</summary>
+                <ul>{info.data.timeline.map((entry: any, index: number) =>
+                  <li key={index}>{displayDate(entry.created)} · {entry.type.replaceAll("/", " / ")}</li>
+                )}</ul>
+              </details>
+            )}
             {!!info.data.messages.length && (
               <details>
                 <summary>

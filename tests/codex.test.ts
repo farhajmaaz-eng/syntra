@@ -95,6 +95,7 @@ describe("OpenAI Codex app-server integration", () => {
     features.decideApproval({
       id: approval.id,
       approved: true,
+      authorized: true,
       note: "Approved by the integration test",
     });
     const result = await running;
@@ -228,6 +229,7 @@ it("persists an early terminal event and ignores stale events on the next turn",
   expect(following.turnId).not.toBe(early.turnId);
   expect(following.text).toContain("Fixture completed");
   expect(following.text).not.toContain("STALE TEXT");
+  expect(following.text).not.toContain("UNTAGGED TEXT");
 });
 
 it("interrupts once during turn startup while rejecting a second turn on that session", async () => {
@@ -262,3 +264,18 @@ it("settles the owning session when the App Server process exits and can restart
   await codex.loginApiKey("sk-fixture-codex-key-1234567890");
   expect((await codex.runSessionTurn({ sessionId: session.id, prompt: "FIXTURE_EARLY" })).text).toBe("Early completed answer");
 }, 10000);
+
+
+it("preserves separate completed message items without duplicating their streamed text", async () => {
+  const session = await codex.createSession({ title: "Message retention", cwd: project });
+  const result = await codex.runSessionTurn({ sessionId: session.id, prompt: "FIXTURE_MULTIPLE_MESSAGES" });
+  expect(result.text).toBe("First completed item\n\nSecond completed item");
+});
+
+it("persists a terminal start reply even when there is no completion notification", async () => {
+  const session = await codex.createSession({ title: "Terminal reply", cwd: project });
+  const result = await codex.runSessionTurn({ sessionId: session.id, prompt: "FIXTURE_TERMINAL_REPLY" });
+  expect(result.text).toBe("Terminal reply recovered.\n\nAdditional final message.");
+  expect(result.diff).toContain("src/recovered.ts");
+  expect(codexModule.codexSessionDetail(session.id).turns).toContainEqual(expect.objectContaining({ status: "completed" }));
+});
